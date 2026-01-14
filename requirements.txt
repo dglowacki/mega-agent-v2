@@ -1,0 +1,42 @@
+# Core SDK
+claude-agent-sdk>=1.0.0
+
+# AI/LLM Providers
+anthropic>=0.75.0
+boto3>=1.40.0
+openai>=2.6.0
+google-generativeai>=0.3.0
+
+# Google Services
+google-api-python-client>=2.185.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+google-ads>=24.1.0
+google-cloud-storage>=3.5.0
+
+# Communication
+slack-sdk>=3.37.0
+
+# Web framework
+flask>=3.0.0
+
+# Async utilities
+aiofiles>=23.0.0
+anyio>=4.0.0
+websockets>=12.0
+
+# Data validation
+pydantic>=2.0.0
+
+# Utilities
+tiktoken>=0.5.1
+python-dotenv>=1.0.0
+python-multipart
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.7.0

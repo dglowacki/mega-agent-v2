@@ -1,0 +1,22 @@
+[Unit]
+Description=Voice Assistant WebSocket Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/mega-agent2
+Environment="PATH=/home/ec2-user/.local/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/ec2-user/mega-agent2/.env
+ExecStart=/usr/bin/python3.11 /home/ec2-user/mega-agent2/voice_gateway.py --host 127.0.0.1 --port 8765 --voice Ara
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=voice-gateway
+
+[Install]
+WantedBy=multi-user.target

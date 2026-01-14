@@ -1,0 +1,241 @@
+{
+  "routing_rules": {
+    "communication": {
+      "slack_summary": "llama3.1-8b",
+      "email_draft": "llama-3.3-70b",
+      "chat_response": "llama3.1-8b"
+    },
+    "code": {
+      "code_review": "gpt-oss-120b",
+      "code_generation": "gpt-oss-120b",
+      "bug_analysis": "llama-3.3-70b"
+    },
+    "reporting": {
+      "analytics_summary": "gemini-2.5-pro",
+      "data_visualization": "gemini-2.5-pro",
+      "report_generation": "llama-3.3-70b"
+    },
+    "scheduling": {
+      "calendar_management": "llama3.1-8b",
+      "meeting_summary": "llama-3.3-70b"
+    },
+    "automation": {
+      "task_planning": "llama-3.3-70b",
+      "workflow_automation": "llama3.1-8b",
+      "status_mapping": "llama-3.3-70b"
+    },
+    "creative": {
+      "image_generation": "gpt-image-1",
+      "image_editing": "gemini-2.5-flash-image",
+      "content_creation": "llama-3.3-70b",
+      "brainstorming": "qwen-3-32b"
+    },
+    "life": {
+      "personal_assistant": "llama3.1-8b",
+      "reminders": "llama3.1-8b"
+    },
+    "fieldy": {
+      "conversation_analysis": "gpt-oss-120b",
+      "insight_generation": "gpt-oss-120b",
+      "coaching_analysis": "gpt-oss-120b",
+      "task_extraction": "llama-3.3-70b"
+    },
+    "web_browser": {
+      "web_scraping": "llama3.1-8b",
+      "page_parsing": "llama3.1-8b",
+      "data_extraction": "gpt-5-codex",
+      "web_research": "llama-3.3-70b"
+    },
+    "game_ideas": {
+      "game_generation": "qwen-3-32b",
+      "description_generation": "llama3.1-8b"
+    },
+    "agent_improvement": {
+      "system_analysis": "gpt-5-codex",
+      "suggestion_generation": "gpt-5-codex",
+      "architecture_review": "gpt-5-codex"
+    },
+    "game_prototyper": {
+      "game_design": "gemini-2.5-pro",
+      "code_generation": "gemini-2.5-pro",
+      "concept_creation": "gemini-2.5-pro",
+      "architecture_planning": "gemini-2.5-pro"
+    },
+    "wordpress": {
+      "content_generation": "gpt-oss-120b",
+      "content_rewriting": "gpt-oss-120b",
+      "article_creation": "gpt-oss-120b"
+    }
+  },
+  "model_capabilities": {
+    "claude-sonnet-4-5": {
+      "provider": "bedrock",
+      "model_id": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      "provider_name": "Anthropic (via AWS Bedrock)",
+      "strengths": ["reasoning", "analysis", "long-context", "creative-writing", "code-generation"],
+      "max_tokens": 200000,
+      "context_window": 200000,
+      "cost_per_1k_input": 0.003,
+      "cost_per_1k_output": 0.015
+    },
+    "claude-haiku-4-5": {
+      "provider": "bedrock",
+      "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "provider_name": "Anthropic (via AWS Bedrock)",
+      "strengths": ["speed", "efficiency", "quick-responses"],
+      "max_tokens": 200000,
+      "context_window": 200000,
+      "cost_per_1k_input": 0.0003,
+      "cost_per_1k_output": 0.0015
+    },
+    "gpt-5": {
+      "provider": "openai",
+      "model_id": "gpt-5",
+      "provider_name": "OpenAI",
+      "strengths": ["general-purpose", "reasoning", "multilingual"],
+      "max_tokens": 128000,
+      "context_window": 128000,
+      "cost_per_1k_input": 0.01,
+      "cost_per_1k_output": 0.03
+    },
+    "gpt-5-codex": {
+      "provider": "openai",
+      "model_id": "gpt-5-codex",
+      "provider_name": "OpenAI",
+      "uses_responses_api": true,
+      "strengths": ["code-generation", "code-review", "debugging"],
+      "max_tokens": 128000,
+      "context_window": 128000,
+      "cost_per_1k_input": 0.00125,
+      "cost_per_1k_output": 0.01
+    },
+    "gpt-image-1": {
+      "provider": "openai",
+      "model_id": "dall-e-3",
+      "provider_name": "OpenAI",
+      "strengths": ["image-generation", "creative-visuals", "high-quality"],
+      "max_tokens": null,
+      "context_window": null,
+      "cost_per_image": 0.04
+    },
+    "gemini-2.5-flash-image": {
+      "provider": "google",
+      "model_id": "gemini-2.5-flash",
+      "provider_name": "Google AI",
+      "strengths": ["image-editing", "fast-image-processing", "multimodal"],
+      "max_tokens": 8192,
+      "context_window": 1000000,
+      "cost_per_1k_input": 0.0001,
+      "cost_per_1k_output": 0.0003
+    },
+    "gemini-2.5-pro": {
+      "provider": "google",
+      "model_id": "gemini-2.5-pro",
+      "provider_name": "Google AI",
+      "strengths": ["analytics", "data-viz", "multimodal", "code-generation", "reasoning"],
+      "max_tokens": 8192,
+      "context_window": 2000000,
+      "cost_per_1k_input": 0.00125,
+      "cost_per_1k_output": 0.005
+    },
+    "gemini-2.5-flash": {
+      "provider": "google",
+      "model_id": "gemini-2.5-flash",
+      "provider_name": "Google AI",
+      "strengths": ["speed", "real-time", "images", "multimodal"],
+      "max_tokens": 8192,
+      "context_window": 1000000,
+      "cost_per_1k_input": 0.0001,
+      "cost_per_1k_output": 0.0003
+    },
+    "llama-3.3-70b": {
+      "provider": "cerebras",
+      "model_id": "llama-3.3-70b",
+      "provider_name": "Cerebras",
+      "strengths": ["reasoning", "code-generation", "ultra-fast", "cost-effective"],
+      "max_tokens": 8192,
+      "context_window": 8192,
+      "cost_per_1k_input": 0.0006,
+      "cost_per_1k_output": 0.0006,
+      "inference_speed": "ultra-fast (10-20x faster than standard)"
+    },
+    "llama3.1-8b": {
+      "provider": "cerebras",
+      "model_id": "llama3.1-8b",
+      "provider_name": "Cerebras",
+      "strengths": ["ultra-fast", "simple-tasks", "cost-effective", "high-volume"],
+      "max_tokens": 8192,
+      "context_window": 128000,
+      "cost_per_1k_input": 0.0001,
+      "cost_per_1k_output": 0.0001,
+      "inference_speed": "ultra-fast"
+    },
+    "qwen-3-32b": {
+      "provider": "cerebras",
+      "model_id": "qwen-3-32b",
+      "provider_name": "Cerebras",
+      "strengths": ["reasoning", "multilingual", "fast", "cost-effective"],
+      "max_tokens": 8192,
+      "context_window": 32768,
+      "cost_per_1k_input": 0.0006,
+      "cost_per_1k_output": 0.0006,
+      "inference_speed": "ultra-fast"
+    },
+    "qwen-3-235b-instruct": {
+      "provider": "cerebras",
+      "model_id": "qwen-3-235b-a22b-instruct-2507",
+      "provider_name": "Cerebras",
+      "strengths": ["advanced-reasoning", "complex-tasks", "multilingual", "large-model"],
+      "max_tokens": 8192,
+      "context_window": 32768,
+      "cost_per_1k_input": 0.006,
+      "cost_per_1k_output": 0.006,
+      "inference_speed": "fast"
+    },
+    "qwen-3-235b-thinking": {
+      "provider": "cerebras",
+      "model_id": "qwen-3-235b-a22b-thinking-2507",
+      "provider_name": "Cerebras",
+      "strengths": ["deep-reasoning", "problem-solving", "chain-of-thought", "complex-analysis"],
+      "max_tokens": 8192,
+      "context_window": 32768,
+      "cost_per_1k_input": 0.006,
+      "cost_per_1k_output": 0.006,
+      "inference_speed": "fast",
+      "notes": "Thinking model similar to O1 - uses chain-of-thought reasoning"
+    },
+    "gpt-oss-120b": {
+      "provider": "cerebras",
+      "model_id": "gpt-oss-120b",
+      "provider_name": "Cerebras",
+      "strengths": ["reasoning", "code-generation", "large-model", "fast"],
+      "max_tokens": 40000,
+      "context_window": 131000,
+      "cost_per_1k_input": 0.0012,
+      "cost_per_1k_output": 0.0012,
+      "inference_speed": "fast"
+    }
+  },
+  "documentation": {
+    "description": "Central LLM routing configuration for mega-agent system",
+    "version": "2.0",
+    "last_updated": "2025-10-28",
+    "usage": "This file is the single source of truth for LLM routing. All agents use core.llm_router.LLMRouter to access models based on this configuration.",
+    "how_to_add_agent": "Add a new domain key under routing_rules with task_type mappings to model names",
+    "how_to_add_model": "Add model entry under model_capabilities with provider, model_id, and capabilities",
+    "model_selection_guide": {
+      "use_claude_sonnet": "Complex reasoning, long documents, creative writing, important code generation",
+      "use_claude_haiku": "Quick responses, simple tasks, high-volume operations, cost optimization",
+      "use_gemini_pro": "Analytics, data visualization, multimodal tasks, large context needs (2M tokens)",
+      "use_gemini_flash": "Real-time tasks, image processing, speed-critical operations",
+      "use_gpt5": "General-purpose tasks, multilingual content",
+      "use_gpt5_codex": "Code review, debugging, complex code generation",
+      "use_cerebras_llama33": "Fast reasoning, code generation (10-20x faster than GPT), cost-effective alternative to Sonnet",
+      "use_cerebras_llama31_8b": "Ultra-fast simple tasks, replace Haiku for speed-critical high-volume operations",
+      "use_cerebras_qwen3_32b": "Multilingual tasks, fast reasoning, good balance of speed and quality",
+      "use_cerebras_qwen3_235b_thinking": "Deep reasoning problems requiring chain-of-thought (O1-style), complex analysis",
+      "use_cerebras_qwen3_235b_instruct": "Advanced complex tasks, large model capacity with fast inference",
+      "use_cerebras_gpt_oss": "Open-source GPT alternative, good reasoning and code generation (120B parameters)"
+    }
+  }
+}

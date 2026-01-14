@@ -1,0 +1,23 @@
+[Unit]
+Description=Voice Assistant Flask Service
+After=network.target
+Wants=voice-gateway.service
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/home/ec2-user/mega-agent2
+Environment="PATH=/home/ec2-user/.local/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/home/ec2-user/mega-agent2/.env
+ExecStart=/usr/bin/python3.11 /home/ec2-user/mega-agent2/voice_service.py --host 127.0.0.1 --port 5050
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=voice-service
+
+[Install]
+WantedBy=multi-user.target

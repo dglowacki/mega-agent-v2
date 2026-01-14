@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            border: 4px solid black;
+            padding: 0;
+        }
+        .header {
+            background-color: black;
+            color: white;
+            padding: 20px;
+        }
+        .header-title {
+            font-size: 24px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .header-date {
+            font-size: 14px;
+            margin-top: 5px;
+            opacity: 0.8;
+        }
+        .totals {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            border-bottom: 3px solid black;
+        }
+        .total-cell {
+            padding: 20px;
+            border-right: 3px solid black;
+            text-align: center;
+        }
+        .total-cell:last-child {
+            border-right: none;
+        }
+        .total-value {
+            font-size: 28px;
+            font-weight: 900;
+            color: #4caf50;
+        }
+        .total-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-top: 5px;
+            font-weight: 700;
+        }
+        .app-section {
+            padding: 20px;
+            border-bottom: 3px solid black;
+        }
+        .app-section:last-child {
+            border-bottom: none;
+        }
+        .app-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .app-icon {
+            width: 60px;
+            height: 60px;
+            border: 3px solid black;
+            margin-right: 15px;
+            background-color: #f5f5f5;
+        }
+        .app-name {
+            font-size: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .app-trending {
+            margin-left: auto;
+            font-size: 24px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .metric-box {
+            padding: 15px;
+            border: 3px solid black;
+            background-color: #f5f5f5;
+        }
+        .metric-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: 900;
+        }
+        .metric-downloads { border-left-color: #2196f3; border-left-width: 6px; }
+        .metric-revenue { border-left-color: #4caf50; border-left-width: 6px; }
+        .metric-updates { border-left-color: #ffeb3b; border-left-width: 6px; }
+        .metric-crashes { border-left-color: #f44336; border-left-width: 6px; }
+        .footer {
+            padding: 15px 20px;
+            background-color: black;
+            color: white;
+            font-size: 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">📱 App Store Metrics</div>
+            <div class="header-date">{{date}}</div>
+        </div>
+
+        <div class="totals">
+            <div class="total-cell">
+                <div class="total-value">{{totals.total_downloads}}</div>
+                <div class="total-label">Downloads</div>
+            </div>
+            <div class="total-cell">
+                <div class="total-value">${{totals.total_revenue}}</div>
+                <div class="total-label">Revenue</div>
+            </div>
+            <div class="total-cell">
+                <div class="total-value">{{totals.avg_rating}}</div>
+                <div class="total-label">Avg Rating</div>
+            </div>
+        </div>
+
+        {{#each apps}}
+        <div class="app-section">
+            <div class="app-header">
+                {{#if icon_url}}
+                <img src="{{icon_url}}" class="app-icon" alt="{{name}}">
+                {{else}}
+                <div class="app-icon"></div>
+                {{/if}}
+                <div class="app-name">{{name}}</div>
+                {{#if trending}}
+                <div class="app-trending">{{#if (eq trending 'up')}}📈{{else}}📉{{/if}}</div>
+                {{/if}}
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-box metric-downloads">
+                    <div class="metric-label">Downloads</div>
+                    <div class="metric-value">{{metrics.downloads}}</div>
+                </div>
+                <div class="metric-box metric-revenue">
+                    <div class="metric-label">Revenue</div>
+                    <div class="metric-value">${{metrics.revenue}}</div>
+                </div>
+                <div class="metric-box metric-updates">
+                    <div class="metric-label">Updates</div>
+                    <div class="metric-value">{{metrics.updates}}</div>
+                </div>
+                <div class="metric-box metric-crashes">
+                    <div class="metric-label">Crashes</div>
+                    <div class="metric-value">{{metrics.crashes}}</div>
+                </div>
+            </div>
+        </div>
+        {{/each}}
+
+        <div class="footer">
+            Generated by Mega-Agent2 App Store Integration
+        </div>
+    </div>
+</body>
+</html>

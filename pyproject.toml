@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mega-agent2"
+version = "2.0.0"
+description = "Multi-agent orchestrator system built with Claude Agent SDK"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "David Parchomchuk", email = "dave@flycowgames.com"}
+]
+keywords = ["ai", "agents", "orchestration", "claude", "anthropic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "claude-agent-sdk>=1.0.0",
+    "anthropic>=0.75.0",
+    "boto3>=1.40.0",
+    "openai>=2.6.0",
+    "google-generativeai>=0.3.0",
+    "google-api-python-client>=2.185.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-ads>=24.1.0",
+    "slack-sdk>=3.37.0",
+    "aiofiles>=23.0.0",
+    "anyio>=4.0.0",
+    "pydantic>=2.0.0",
+    "tiktoken>=0.5.1",
+    "google-cloud-storage>=3.5.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/flycowgames/mega-agent2"
+Repository = "https://github.com/flycowgames/mega-agent2"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

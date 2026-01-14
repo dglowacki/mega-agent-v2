@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Voice Assistant</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 2rem;
+        }
+
+        .status-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 2rem;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+            transition: background 0.3s;
+        }
+
+        .status-dot.connected {
+            background: #4ade80;
+            box-shadow: 0 0 10px #4ade80;
+        }
+
+        .status-dot.listening {
+            background: #60a5fa;
+            box-shadow: 0 0 10px #60a5fa;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.thinking {
+            background: #fbbf24;
+            box-shadow: 0 0 10px #fbbf24;
+            animation: pulse 0.8s infinite;
+        }
+
+        .status-dot.speaking {
+            background: #a78bfa;
+            box-shadow: 0 0 10px #a78bfa;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        #status {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .voice-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 2.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+        }
+
+        .voice-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 30px rgba(102, 126, 234, 0.6);
+        }
+
+        .voice-button:active {
+            transform: scale(0.95);
+        }
+
+        .voice-button.listening {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            animation: pulse-button 1.5s infinite;
+        }
+
+        .voice-button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        @keyframes pulse-button {
+            0%, 100% { box-shadow: 0 4px 20px rgba(96, 165, 250, 0.4); }
+            50% { box-shadow: 0 4px 40px rgba(96, 165, 250, 0.8); }
+        }
+
+        .transcript-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            text-align: left;
+        }
+
+        .message {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            background: rgba(96, 165, 250, 0.2);
+            border-left: 3px solid #60a5fa;
+        }
+
+        .message.assistant {
+            background: rgba(167, 139, 250, 0.2);
+            border-left: 3px solid #a78bfa;
+        }
+
+        .message-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 0.25rem;
+        }
+
+        .message-text {
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .visualizer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            height: 40px;
+            margin-bottom: 1rem;
+        }
+
+        .bar {
+            width: 4px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+            transition: height 0.1s ease-out;
+        }
+
+        .settings {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        .setting {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid #ef4444;
+            color: #fca5a5;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Claude Voice Assistant</h1>
+        <p class="subtitle">Powered by Grok Voice + Claude Agent SDK</p>
+
+        <div class="status-container">
+            <div id="statusDot" class="status-dot"></div>
+            <span id="status">Disconnected</span>
+        </div>
+
+        <div id="error" class="error"></div>
+
+        <button id="voiceButton" class="voice-button" disabled>
+            <span id="buttonIcon">&#x1F50A;</span>
+        </button>
+
+        <div class="visualizer" id="visualizer">
+            <!-- Bars will be added by JS -->
+        </div>
+
+        <div class="transcript-container" id="transcript">
+            <div class="message assistant">
+                <div class="message-label">Assistant</div>
+                <div class="message-text">Click the button and start speaking to begin.</div>
+            </div>
+        </div>
+
+        <div class="settings">
+            <div class="setting">
+                <label for="wsUrl">Server:</label>
+                <input type="text" id="wsUrl" value="ws://localhost:8765" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; width: 150px;">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let processor = null;
+        let isListening = false;
+        let isConnected = false;
+
+        // DOM elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('status');
+        const voiceButton = document.getElementById('voiceButton');
+        const buttonIcon = document.getElementById('buttonIcon');
+        const transcript = document.getElementById('transcript');
+        const errorDiv = document.getElementById('error');
+        const visualizer = document.getElementById('visualizer');
+        const wsUrlInput = document.getElementById('wsUrl');
+
+        // Create visualizer bars
+        for (let i = 0; i < 20; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = '4px';
+            visualizer.appendChild(bar);
+        }
+        const bars = visualizer.querySelectorAll('.bar');
+
+        // Update status display
+        function setStatus(status, text) {
+            statusDot.className = 'status-dot ' + status;
+            statusText.textContent = text;
+        }
+
+        // Show error
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => errorDiv.classList.remove('show'), 5000);
+        }
+
+        // Add message to transcript
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            div.innerHTML = `
+                <div class="message-label">${role === 'user' ? 'You' : 'Assistant'}</div>
+                <div class="message-text">${text}</div>
+            `;
+            transcript.appendChild(div);
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+
+        // Connect to WebSocket server
+        function connect() {
+            const url = wsUrlInput.value;
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                isConnected = true;
+                setStatus('connected', 'Connected');
+                voiceButton.disabled = false;
+            };
+
+            ws.onclose = () => {
+                isConnected = false;
+                isListening = false;
+                setStatus('', 'Disconnected');
+                voiceButton.disabled = true;
+                voiceButton.classList.remove('listening');
+                buttonIcon.textContent = '\u{1F50A}';
+
+                // Try to reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = (error) => {
+                showError('WebSocket error. Is the server running?');
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleMessage(msg);
+            };
+        }
+
+        // Handle incoming messages
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'transcription':
+                    addMessage('user', msg.text);
+                    setStatus('thinking', 'Thinking...');
+                    break;
+
+                case 'response':
+                    addMessage('assistant', msg.text);
+                    break;
+
+                case 'thinking':
+                    if (msg.active) {
+                        setStatus('thinking', 'Thinking...');
+                    }
+                    break;
+
+                case 'audio':
+                    setStatus('speaking', 'Speaking...');
+                    playAudio(msg.data);
+                    break;
+
+                case 'pong':
+                    // Keepalive response
+                    break;
+
+                default:
+                    console.log('Unknown message type:', msg.type);
+            }
+        }
+
+        // Play received audio
+        async function playAudio(base64Data) {
+            try {
+                // Decode base64
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                // Convert to Int16 (PCM format)
+                const int16 = new Int16Array(bytes.buffer);
+
+                // Convert to Float32 for Web Audio
+                const float32 = new Float32Array(int16.length);
+                for (let i = 0; i < int16.length; i++) {
+                    float32[i] = int16[i] / 32768;
+                }
+
+                // Create audio buffer
+                if (!audioContext) {
+                    audioContext = new AudioContext({ sampleRate: 24000 });
+                }
+
+                const audioBuffer = audioContext.createBuffer(1, float32.length, 24000);
+                audioBuffer.copyToChannel(float32, 0);
+
+                // Play
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.onended = () => {
+                    if (isListening) {
+                        setStatus('listening', 'Listening...');
+                    } else {
+                        setStatus('connected', 'Connected');
+                    }
+                };
+                source.start();
+
+            } catch (error) {
+                console.error('Error playing audio:', error);
+                setStatus('connected', 'Connected');
+            }
+        }
+
+        // Start listening
+        async function startListening() {
+            try {
+                // Get microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 24000,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                // Create audio context
+                if (!audioContext) {
+                    audioContext = new AudioContext({ sampleRate: 24000 });
+                }
+
+                // Create processor
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (!isListening || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+                    const pcmFloat = e.inputBuffer.getChannelData(0);
+
+                    // Convert to Int16
+                    const int16 = new Int16Array(pcmFloat.length);
+                    for (let i = 0; i < pcmFloat.length; i++) {
+                        const s = Math.max(-1, Math.min(1, pcmFloat[i]));
+                        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+
+                    // Update visualizer
+                    updateVisualizer(pcmFloat);
+
+                    // Send to server
+                    const base64 = btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
+                    ws.send(JSON.stringify({ type: 'audio', data: base64 }));
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isListening = true;
+                voiceButton.classList.add('listening');
+                buttonIcon.textContent = '\u{1F3A4}';
+                setStatus('listening', 'Listening...');
+
+            } catch (error) {
+                showError('Microphone access denied');
+                console.error('Error accessing microphone:', error);
+            }
+        }
+
+        // Stop listening
+        function stopListening() {
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            isListening = false;
+            voiceButton.classList.remove('listening');
+            buttonIcon.textContent = '\u{1F50A}';
+            setStatus('connected', 'Connected');
+
+            // Reset visualizer
+            bars.forEach(bar => bar.style.height = '4px');
+        }
+
+        // Update audio visualizer
+        function updateVisualizer(audioData) {
+            const step = Math.floor(audioData.length / bars.length);
+            for (let i = 0; i < bars.length; i++) {
+                const idx = i * step;
+                const value = Math.abs(audioData[idx]) * 100;
+                bars[i].style.height = Math.max(4, Math.min(40, value)) + 'px';
+            }
+        }
+
+        // Toggle listening
+        voiceButton.addEventListener('click', () => {
+            if (isListening) {
+                stopListening();
+            } else {
+                startListening();
+            }
+        });
+
+        // Start connection
+        connect();
+
+        // Keepalive ping
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

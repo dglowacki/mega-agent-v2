@@ -1,0 +1,122 @@
+{
+  "title": "Weekly Activity Report",
+  "subtitle": "January 1-7, 2026",
+  "metrics": [
+    {
+      "label": "Total Commits",
+      "value": "42",
+      "change": "+12",
+      "trend": "up"
+    },
+    {
+      "label": "Active Contributors",
+      "value": "8",
+      "change": "+2",
+      "trend": "up"
+    },
+    {
+      "label": "Pull Requests",
+      "value": "15",
+      "change": "-3",
+      "trend": "down"
+    },
+    {
+      "label": "Issues Closed",
+      "value": "23",
+      "change": "+5",
+      "trend": "up"
+    }
+  ],
+  "sections": [
+    {
+      "title": "Top Contributors",
+      "type": "table",
+      "data": {
+        "columns": [
+          "Name",
+          "Commits",
+          "Lines Changed",
+          "Status"
+        ],
+        "rows": [
+          {
+            "Name": "John Doe",
+            "Commits": "15",
+            "Lines Changed": "1,234",
+            "Status": "active"
+          },
+          {
+            "Name": "Jane Smith",
+            "Commits": "12",
+            "Lines Changed": "987",
+            "Status": "active"
+          },
+          {
+            "Name": "Alice Johnson",
+            "Commits": "8",
+            "Lines Changed": "654",
+            "Status": "pending"
+          },
+          {
+            "Name": "Bob Wilson",
+            "Commits": "7",
+            "Lines Changed": "432",
+            "Status": "active"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Recent Activity",
+      "type": "timeline",
+      "data": {
+        "events": [
+          {
+            "time": "Jan 7, 2:30 PM",
+            "title": "Feature Deployment",
+            "content": "User authentication v2 deployed to production"
+          },
+          {
+            "time": "Jan 6, 4:15 PM",
+            "title": "Code Review Completed",
+            "content": "PR #42 approved and merged into main"
+          },
+          {
+            "time": "Jan 5, 10:00 AM",
+            "title": "Bug Fix Released",
+            "content": "Critical memory leak fixed in WebSocket handler"
+          },
+          {
+            "time": "Jan 4, 3:45 PM",
+            "title": "New Feature Branch",
+            "content": "Started work on OAuth2 integration"
+          }
+        ]
+      }
+    },
+    {
+      "title": "Project Status",
+      "type": "list",
+      "data": {
+        "items": [
+          {
+            "title": "Backend API",
+            "content": "95% complete - Final testing in progress"
+          },
+          {
+            "title": "Frontend Dashboard",
+            "content": "80% complete - UI polish and responsive design"
+          },
+          {
+            "title": "Documentation",
+            "content": "60% complete - API docs and user guides"
+          },
+          {
+            "title": "Testing",
+            "content": "70% complete - Unit and integration tests"
+          }
+        ]
+      }
+    }
+  ]
+}

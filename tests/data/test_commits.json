@@ -1,0 +1,71 @@
+[
+  {
+    "sha": "abc123def456",
+    "author": "John Doe",
+    "email": "john@example.com",
+    "date": "2026-01-03T10:30:00Z",
+    "message": "feat: Add user authentication with JWT tokens",
+    "files_changed": [
+      "src/auth.js",
+      "src/middleware/auth.js",
+      "tests/auth.test.js"
+    ],
+    "additions": 125,
+    "deletions": 15,
+    "files_count": 3
+  },
+  {
+    "sha": "def456ghi789",
+    "author": "Jane Smith",
+    "email": "jane@example.com",
+    "date": "2026-01-03T14:20:00Z",
+    "message": "fix: Resolve memory leak in WebSocket handler",
+    "files_changed": [
+      "src/websocket.js"
+    ],
+    "additions": 8,
+    "deletions": 12,
+    "files_count": 1
+  },
+  {
+    "sha": "ghi789jkl012",
+    "author": "John Doe",
+    "email": "john@example.com",
+    "date": "2026-01-03T16:45:00Z",
+    "message": "wip",
+    "files_changed": [
+      "src/utils.js"
+    ],
+    "additions": 3,
+    "deletions": 1,
+    "files_count": 1
+  },
+  {
+    "sha": "jkl012mno345",
+    "author": "Alice Johnson",
+    "email": "alice@example.com",
+    "date": "2026-01-04T09:15:00Z",
+    "message": "refactor: Improve database query performance by adding indexes",
+    "files_changed": [
+      "db/schema.sql",
+      "src/models/user.js"
+    ],
+    "additions": 45,
+    "deletions": 20,
+    "files_count": 2
+  },
+  {
+    "sha": "mno345pqr678",
+    "author": "Jane Smith",
+    "email": "jane@example.com",
+    "date": "2026-01-04T11:30:00Z",
+    "message": "docs: Update API documentation for v2 endpoints",
+    "files_changed": [
+      "docs/api.md",
+      "README.md"
+    ],
+    "additions": 78,
+    "deletions": 12,
+    "files_count": 2
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "date": "2026-01-01",
+    "commits": 5,
+    "author": "John",
+    "lines": 234
+  },
+  {
+    "date": "2026-01-01",
+    "commits": 3,
+    "author": "Jane",
+    "lines": 156
+  },
+  {
+    "date": "2026-01-02",
+    "commits": 8,
+    "author": "John",
+    "lines": 445
+  },
+  {
+    "date": "2026-01-02",
+    "commits": 4,
+    "author": "Alice",
+    "lines": 198
+  },
+  {
+    "date": "2026-01-03",
+    "commits": 6,
+    "author": "Jane",
+    "lines": 322
+  },
+  {
+    "date": "2026-01-03",
+    "commits": 5,
+    "author": "Alice",
+    "lines": 267
+  }
+]
