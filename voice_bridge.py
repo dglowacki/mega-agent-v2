@@ -60,7 +60,14 @@ class VoiceBridge:
         """Connect to Grok Voice API."""
         print("Connecting to Grok Voice API...", flush=True)
         # Grok handles voice personality, Claude handles text responses
-        instructions = "Transcribe audio accurately. Facts must be represented EXACTLY. Add commentary or color as needed, have a clever personality."
+        instructions = """Transcribe audio accurately. Facts must be represented EXACTLY. Add commentary or color as needed, have a clever personality.
+
+VOCABULARY CONTEXT (for accurate transcription):
+- Names: Dave, Jess, Allen
+- Projects: EH! (pronounced like letter "A", a social media app), TrailMix, Fieldy, Mega Agent
+- Companies: FlyCow Games, Trail Mix Technologies
+- Technical: Claude, Grok, MCP, WebSocket, API, GitHub, AWS
+"""
 
         try:
             await asyncio.wait_for(
@@ -216,8 +223,11 @@ class VoiceBridge:
                 if transcript:
                     # Process through Claude
                     response = await self.process_transcription(transcript)
-                    # Note: TTS disabled - Grok's API generates its own AI response
-                    # which causes double-voice. Text response only for now.
+
+                    # Inject Claude's response into Grok's conversation history
+                    # so Grok has context for future turns (prevents hallucination)
+                    if response:
+                        await self.grok.add_assistant_context(response)
 
             # Audio response chunk from TTS
             elif msg_type == "response.output_audio.delta":

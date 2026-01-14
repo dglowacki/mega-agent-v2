@@ -174,6 +174,28 @@ class GrokVoiceClient:
         # Trigger response
         await self.ws.send(json.dumps({"type": "response.create"}))
 
+    async def add_assistant_context(self, text: str) -> None:
+        """
+        Add assistant response to conversation history WITHOUT generating audio.
+
+        This injects context so Grok knows what was said, but doesn't trigger TTS.
+
+        Args:
+            text: Assistant's response text to add to history
+        """
+        if not self.ws:
+            raise RuntimeError("Not connected")
+
+        await self.ws.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}]
+            }
+        }))
+        # Note: NOT calling response.create - just adding to history
+
     async def send_assistant_text(self, text: str) -> None:
         """
         Send assistant response text for TTS synthesis.
