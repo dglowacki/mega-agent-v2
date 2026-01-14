@@ -59,8 +59,8 @@ class VoiceBridge:
     async def connect(self) -> None:
         """Connect to Grok Voice API."""
         print("Connecting to Grok Voice API...", flush=True)
-        # Minimal instructions - we use Grok for STT/TTS only, Claude does the thinking
-        instructions = "Transcribe audio. Do not respond or add commentary."
+        # Grok handles voice personality, Claude handles text responses
+        instructions = "Transcribe audio accurately, add commentary or color as needed, have a clever personality."
 
         try:
             await asyncio.wait_for(
