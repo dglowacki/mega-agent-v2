@@ -523,8 +523,9 @@ VOICE_PAGE = '''
     </div>
 
     <script>
-        // Configuration
+        // Configuration - Version 2
         const WS_URL = '{{ ws_url }}';
+        const VERSION = 'v2.1';
 
         // State
         let ws = null;
@@ -534,6 +535,7 @@ VOICE_PAGE = '''
         let isReady = false;
         let isListening = false;
         let isProcessing = false;
+        let connectAttempts = 0;
 
         // DOM elements
         const statusDot = document.getElementById('statusDot');
@@ -552,6 +554,11 @@ VOICE_PAGE = '''
         }
         const bars = visualizer.querySelectorAll('.bar');
 
+        // Debug logging - shows in transcript
+        function log(msg) {
+            console.log('[Voice ' + VERSION + '] ' + msg);
+        }
+
         function updateStatus(dotClass, text) {
             statusDot.className = 'status-dot ' + dotClass;
             statusText.textContent = text;
@@ -565,7 +572,7 @@ VOICE_PAGE = '''
         function showError(message) {
             errorBanner.textContent = message;
             errorBanner.classList.add('show');
-            setTimeout(() => errorBanner.classList.remove('show'), 5000);
+            setTimeout(function() { errorBanner.classList.remove('show'); }, 5000);
         }
 
         function addMessage(role, text) {
@@ -579,31 +586,42 @@ VOICE_PAGE = '''
 
         // Simple WebSocket connection
         function connect() {
+            connectAttempts++;
+            log('Connect attempt ' + connectAttempts + ' to ' + WS_URL);
+
             if (ws) {
                 try { ws.close(); } catch(e) {}
+                ws = null;
             }
 
-            updateStatus('', 'Connecting...');
-            console.log('Connecting to:', WS_URL);
+            updateStatus('', 'Connecting... (' + connectAttempts + ')');
 
-            ws = new WebSocket(WS_URL);
+            try {
+                ws = new WebSocket(WS_URL);
+                log('WebSocket created');
+            } catch(e) {
+                log('WebSocket creation failed: ' + e.message);
+                showError('Connection failed: ' + e.message);
+                setTimeout(connect, 3000);
+                return;
+            }
 
             ws.onopen = function() {
-                console.log('WebSocket connected');
-                updateStatus('', 'Waiting for voice server...');
+                log('WebSocket opened');
+                updateStatus('', 'Connected, waiting for voice...');
             };
 
             ws.onclose = function(e) {
-                console.log('WebSocket closed:', e.code);
+                log('WebSocket closed: code=' + e.code + ' reason=' + e.reason);
                 isReady = false;
-                updateStatus('', 'Disconnected');
+                updateStatus('', 'Disconnected (code: ' + e.code + ')');
                 updateButtons();
-                // Reconnect after 2 seconds
-                setTimeout(connect, 2000);
+                // Reconnect after 3 seconds
+                setTimeout(connect, 3000);
             };
 
             ws.onerror = function(e) {
-                console.log('WebSocket error');
+                log('WebSocket error event');
             };
 
             ws.onmessage = function(e) {
@@ -611,14 +629,16 @@ VOICE_PAGE = '''
                     var msg = JSON.parse(e.data);
                     handleMessage(msg);
                 } catch(err) {
-                    console.log('Parse error:', err);
+                    log('Parse error: ' + err);
                 }
             };
         }
 
         function handleMessage(msg) {
+            log('Received: ' + msg.type);
             if (msg.type === 'grok_ready') {
-                console.log('Grok ready');
+                log('Voice API ready!');
+                connectAttempts = 0;
                 isReady = true;
                 updateStatus('ready', 'Ready');
                 updateButtons();
@@ -876,6 +896,31 @@ def logout():
 def health():
     """Health check endpoint."""
     return {'status': 'ok', 'timestamp': datetime.utcnow().isoformat()}
+
+
+@app.route('/av/status')
+def status():
+    """Detailed status endpoint for debugging."""
+    import socket
+
+    # Check if gateway is reachable
+    gateway_status = 'unknown'
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        result = sock.connect_ex(('127.0.0.1', 8765))
+        gateway_status = 'up' if result == 0 else 'down'
+        sock.close()
+    except:
+        gateway_status = 'error'
+
+    return {
+        'version': 'v2.1',
+        'status': 'ok',
+        'gateway': gateway_status,
+        'sessions': len(valid_sessions),
+        'timestamp': datetime.utcnow().isoformat()
+    }
 
 
 # =============================================================================
