@@ -1,0 +1,18 @@
+[Unit]
+Description=MCP Server v2 for ElevenLabs Voice Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/mega-agent2
+Environment=PATH=/home/ec2-user/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/home/ec2-user/mega-agent2
+ExecStart=/usr/bin/python3 /home/ec2-user/mega-agent2/mcp_server_v2.py --host 127.0.0.1 --port 8082
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
