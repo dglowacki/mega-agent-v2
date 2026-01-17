@@ -1,11 +1,7 @@
 /**
  * Nova Sonic Voice Agent - Browser Client
  *
- * Handles:
- * - Microphone capture (16kHz PCM)
- * - WebSocket communication
- * - Audio playback (24kHz PCM)
- * - UI updates
+ * Optimized for low-latency bidirectional audio streaming.
  */
 
 class NovaVoiceAgent {
@@ -19,44 +15,50 @@ class NovaVoiceAgent {
         this.transcriptContainer = document.getElementById('transcript-container');
 
         // State
-        this.state = 'idle'; // idle, connecting, listening, processing, speaking
+        this.state = 'idle';
         this.ws = null;
         this.mediaStream = null;
-        this.audioContext = null;
+
+        // Audio contexts - reuse for efficiency
+        this.inputContext = null;
+        this.outputContext = null;
         this.processor = null;
-        this.playbackQueue = [];
+
+        // Audio playback - buffered for smooth playback
+        this.audioQueue = [];
         this.isPlaying = false;
+        this.nextPlayTime = 0;
+        this.gainNode = null;
 
         // Audio settings
         this.inputSampleRate = 16000;
         this.outputSampleRate = 24000;
 
-        // Bind event handlers
+        // Message deduplication
+        this.lastAssistantMessage = '';
+        this.currentAssistantDiv = null;
+
+        // Bind events
         this.micButton.addEventListener('click', () => this.handleMicClick());
 
-        // Keep screen awake
-        this.wakeLock = null;
-        this.requestWakeLock();
+        // Initialize output context early
+        this.initOutputContext();
 
         console.log('Nova Voice Agent initialized');
     }
 
-    async requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) {
-                this.wakeLock = await navigator.wakeLock.request('screen');
-                console.log('Wake lock acquired');
-            }
-        } catch (err) {
-            console.log('Wake lock not available:', err);
-        }
+    initOutputContext() {
+        // Pre-create output context for faster playback start
+        this.outputContext = new AudioContext({ sampleRate: this.outputSampleRate });
+        this.gainNode = this.outputContext.createGain();
+        this.gainNode.connect(this.outputContext.destination);
     }
 
     async handleMicClick() {
         if (this.state === 'idle') {
             await this.startSession();
-        } else if (this.state === 'listening') {
-            this.stopListening();
+        } else {
+            this.stopSession();
         }
     }
 
@@ -64,79 +66,78 @@ class NovaVoiceAgent {
         this.setState('connecting');
 
         try {
-            // Request microphone access
+            // Resume audio context if suspended (required by browsers)
+            if (this.outputContext.state === 'suspended') {
+                await this.outputContext.resume();
+            }
+
+            // Request microphone
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
                     sampleRate: this.inputSampleRate,
                     echoCancellation: true,
-                    noiseSuppression: true
+                    noiseSuppression: true,
+                    autoGainControl: true
                 }
             });
 
-            // Set up audio context for recording
-            this.audioContext = new AudioContext({ sampleRate: this.inputSampleRate });
-            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            // Set up input audio processing
+            this.inputContext = new AudioContext({ sampleRate: this.inputSampleRate });
+            const source = this.inputContext.createMediaStreamSource(this.mediaStream);
 
-            // Create script processor for audio capture
-            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-            this.processor.onaudioprocess = (e) => this.handleAudioProcess(e);
+            // Use smaller buffer for lower latency (2048 instead of 4096)
+            this.processor = this.inputContext.createScriptProcessor(2048, 1, 1);
+            this.processor.onaudioprocess = (e) => this.processAudioInput(e);
             source.connect(this.processor);
-            this.processor.connect(this.audioContext.destination);
+            this.processor.connect(this.inputContext.destination);
 
             // Connect WebSocket
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${wsProtocol}//${window.location.host}/nova/stream`;
-            this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(`${wsProtocol}//${window.location.host}/nova/stream`);
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
-                // Send audio start signal
                 this.ws.send(JSON.stringify({ type: 'audio_start' }));
                 this.setState('listening');
             };
 
-            this.ws.onmessage = (event) => this.handleMessage(event);
-
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                this.addMessage('system', 'Connection error. Please try again.');
+            this.ws.onmessage = (e) => this.handleMessage(e);
+            this.ws.onerror = (e) => {
+                console.error('WebSocket error:', e);
+                this.addSystemMessage('Connection error');
                 this.cleanup();
             };
-
             this.ws.onclose = () => {
                 console.log('WebSocket closed');
                 this.cleanup();
             };
 
         } catch (err) {
-            console.error('Failed to start session:', err);
-            this.addMessage('system', 'Failed to access microphone. Please allow microphone access.');
+            console.error('Session start failed:', err);
+            this.addSystemMessage('Microphone access denied');
             this.setState('idle');
         }
     }
 
-    handleAudioProcess(event) {
+    processAudioInput(event) {
         if (this.state !== 'listening' || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
             return;
         }
 
-        const inputData = event.inputBuffer.getChannelData(0);
+        const input = event.inputBuffer.getChannelData(0);
 
-        // Convert float32 to int16
-        const int16Data = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
-            int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        // Convert float32 to int16 PCM
+        const pcm = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]));
+            pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
 
-        // Convert to base64
-        const base64 = this.arrayBufferToBase64(int16Data.buffer);
-
-        // Send to server
+        // Send as base64
         this.ws.send(JSON.stringify({
             type: 'audio',
-            data: base64
+            data: this.arrayBufferToBase64(pcm.buffer)
         }));
     }
 
@@ -149,11 +150,11 @@ class NovaVoiceAgent {
                 break;
 
             case 'audio':
-                this.queueAudio(data.data);
+                this.queueAudioChunk(data.data);
                 break;
 
             case 'transcript':
-                this.addMessage(data.role, data.content);
+                this.handleTranscript(data.role, data.content);
                 break;
 
             case 'tool_use':
@@ -162,47 +163,88 @@ class NovaVoiceAgent {
 
             case 'tool_result':
                 if (!data.success) {
-                    this.addMessage('system', `Tool error: ${data.error}`);
+                    this.addSystemMessage(`Tool error: ${data.error}`);
                 }
                 break;
 
             case 'turn_detected':
+                if (data.interrupted) {
+                    // Stop current playback on interruption
+                    this.clearAudioQueue();
+                }
                 this.setState('processing');
                 break;
 
             case 'error':
-                this.addMessage('system', `Error: ${data.message}`);
-                break;
-
-            case 'reset_confirmed':
-                this.clearTranscript();
-                this.addMessage('system', 'Conversation reset.');
+                this.addSystemMessage(`Error: ${data.message}`);
                 break;
         }
     }
 
-    queueAudio(base64Data) {
-        // Decode base64 to ArrayBuffer
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+    handleTranscript(role, content) {
+        // Skip JSON-like content (turn detection noise)
+        if (content.trim().startsWith('{') && content.trim().endsWith('}')) {
+            return;
         }
 
-        // Convert to Int16Array
-        const int16Data = new Int16Array(bytes.buffer);
+        if (role === 'user') {
+            // User messages are always new
+            this.currentAssistantDiv = null;
+            this.lastAssistantMessage = '';
+            this.addMessage('user', content);
+        } else {
+            // For assistant, append to existing message if it's a continuation
+            const trimmedContent = content.trim();
 
-        // Add to playback queue
-        this.playbackQueue.push(int16Data);
+            // Skip if this is a duplicate or substring of what we already have
+            if (this.lastAssistantMessage.includes(trimmedContent)) {
+                return;
+            }
+
+            // Check if this is a continuation (starts similarly to last)
+            if (this.currentAssistantDiv && this.lastAssistantMessage.length > 0) {
+                // Append new content
+                const textDiv = this.currentAssistantDiv.querySelector('div:last-child');
+                if (textDiv) {
+                    textDiv.textContent = (textDiv.textContent + ' ' + trimmedContent).trim();
+                    this.lastAssistantMessage = textDiv.textContent;
+                }
+            } else {
+                // New assistant message
+                this.addMessage('assistant', trimmedContent);
+                this.lastAssistantMessage = trimmedContent;
+            }
+
+            this.scrollToBottom();
+        }
+    }
+
+    queueAudioChunk(base64Data) {
+        // Decode base64 to PCM
+        const binary = atob(base64Data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        const pcm = new Int16Array(bytes.buffer);
+
+        // Convert to float32
+        const float32 = new Float32Array(pcm.length);
+        for (let i = 0; i < pcm.length; i++) {
+            float32[i] = pcm[i] / 32768.0;
+        }
+
+        // Queue for playback
+        this.audioQueue.push(float32);
 
         // Start playback if not already playing
         if (!this.isPlaying) {
-            this.playNextAudio();
+            this.startPlayback();
         }
     }
 
-    async playNextAudio() {
-        if (this.playbackQueue.length === 0) {
+    startPlayback() {
+        if (this.audioQueue.length === 0) {
             this.isPlaying = false;
             if (this.state === 'speaking') {
                 this.setState('listening');
@@ -213,37 +255,43 @@ class NovaVoiceAgent {
         this.isPlaying = true;
         this.setState('speaking');
 
-        const int16Data = this.playbackQueue.shift();
-
-        // Create audio context for playback (24kHz)
-        const playbackContext = new AudioContext({ sampleRate: this.outputSampleRate });
-
-        // Convert Int16 to Float32
-        const float32Data = new Float32Array(int16Data.length);
-        for (let i = 0; i < int16Data.length; i++) {
-            float32Data[i] = int16Data[i] / 32768.0;
+        // Schedule all queued audio for gapless playback
+        const now = this.outputContext.currentTime;
+        if (this.nextPlayTime < now) {
+            this.nextPlayTime = now;
         }
 
-        // Create audio buffer
-        const audioBuffer = playbackContext.createBuffer(1, float32Data.length, this.outputSampleRate);
-        audioBuffer.getChannelData(0).set(float32Data);
+        while (this.audioQueue.length > 0) {
+            const samples = this.audioQueue.shift();
 
-        // Play audio
-        const source = playbackContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(playbackContext.destination);
+            // Create buffer
+            const buffer = this.outputContext.createBuffer(1, samples.length, this.outputSampleRate);
+            buffer.getChannelData(0).set(samples);
 
-        source.onended = () => {
-            playbackContext.close();
-            this.playNextAudio();
-        };
+            // Create source and schedule
+            const source = this.outputContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this.gainNode);
+            source.start(this.nextPlayTime);
 
-        source.start();
+            // Track when this chunk ends
+            this.nextPlayTime += buffer.duration;
+        }
+
+        // Check for more audio after current queue finishes
+        const checkTime = (this.nextPlayTime - this.outputContext.currentTime) * 1000 + 50;
+        setTimeout(() => this.startPlayback(), checkTime);
     }
 
-    stopListening() {
+    clearAudioQueue() {
+        this.audioQueue = [];
+        this.nextPlayTime = 0;
+    }
+
+    stopSession() {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({ type: 'audio_end' }));
+            this.ws.send(JSON.stringify({ type: 'close' }));
         }
         this.cleanup();
     }
@@ -254,13 +302,13 @@ class NovaVoiceAgent {
             this.processor = null;
         }
 
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
+        if (this.inputContext) {
+            this.inputContext.close();
+            this.inputContext = null;
         }
 
         if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream.getTracks().forEach(t => t.stop());
             this.mediaStream = null;
         }
 
@@ -269,50 +317,32 @@ class NovaVoiceAgent {
             this.ws = null;
         }
 
-        this.playbackQueue = [];
+        this.audioQueue = [];
         this.isPlaying = false;
+        this.nextPlayTime = 0;
+        this.currentAssistantDiv = null;
+        this.lastAssistantMessage = '';
         this.setState('idle');
     }
 
     setState(state) {
         this.state = state;
-
-        // Update status badge
         this.status.className = 'status';
-        switch (state) {
-            case 'idle':
-                this.status.textContent = 'READY';
-                this.micText.textContent = 'TAP TO SPEAK';
-                this.micButton.className = 'mic-button';
-                this.waveform.className = 'waveform';
-                break;
-            case 'connecting':
-                this.status.textContent = 'CONNECTING';
-                this.status.classList.add('processing');
-                this.micText.textContent = 'CONNECTING...';
-                this.micButton.className = 'mic-button disabled';
-                break;
-            case 'listening':
-                this.status.textContent = 'LISTENING';
-                this.status.classList.add('listening');
-                this.micText.textContent = 'LISTENING...';
-                this.micButton.className = 'mic-button listening';
-                this.waveform.className = 'waveform active';
-                break;
-            case 'processing':
-                this.status.textContent = 'THINKING';
-                this.status.classList.add('processing');
-                this.micText.textContent = 'THINKING...';
-                this.waveform.className = 'waveform';
-                break;
-            case 'speaking':
-                this.status.textContent = 'SPEAKING';
-                this.status.classList.add('speaking');
-                this.micText.textContent = 'SPEAKING...';
-                this.micButton.className = 'mic-button speaking';
-                this.waveform.className = 'waveform speaking';
-                break;
-        }
+
+        const states = {
+            idle: { text: 'READY', btn: 'TAP TO SPEAK', btnClass: '', waveClass: '' },
+            connecting: { text: 'CONNECTING', btn: 'CONNECTING...', btnClass: 'disabled', waveClass: '', statusClass: 'processing' },
+            listening: { text: 'LISTENING', btn: 'TAP TO STOP', btnClass: 'listening', waveClass: 'active', statusClass: 'listening' },
+            processing: { text: 'THINKING', btn: 'THINKING...', btnClass: '', waveClass: '', statusClass: 'processing' },
+            speaking: { text: 'SPEAKING', btn: 'SPEAKING...', btnClass: 'speaking', waveClass: 'speaking', statusClass: 'speaking' }
+        };
+
+        const s = states[state] || states.idle;
+        this.status.textContent = s.text;
+        if (s.statusClass) this.status.classList.add(s.statusClass);
+        this.micText.textContent = s.btn;
+        this.micButton.className = 'mic-button' + (s.btnClass ? ' ' + s.btnClass : '');
+        this.waveform.className = 'waveform' + (s.waveClass ? ' ' + s.waveClass : '');
     }
 
     addMessage(role, content) {
@@ -320,10 +350,10 @@ class NovaVoiceAgent {
         div.className = `message ${role}`;
 
         if (role !== 'system') {
-            const roleLabel = document.createElement('div');
-            roleLabel.className = 'role';
-            roleLabel.textContent = role === 'user' ? 'You' : 'Agent';
-            div.appendChild(roleLabel);
+            const label = document.createElement('div');
+            label.className = 'role';
+            label.textContent = role === 'user' ? 'You' : 'Agent';
+            div.appendChild(label);
         }
 
         const text = document.createElement('div');
@@ -331,21 +361,25 @@ class NovaVoiceAgent {
         div.appendChild(text);
 
         this.transcript.appendChild(div);
+
+        if (role === 'assistant') {
+            this.currentAssistantDiv = div;
+        }
+
         this.scrollToBottom();
     }
 
-    addToolBadge(toolName) {
-        const lastMessage = this.transcript.lastElementChild;
-        if (lastMessage && lastMessage.classList.contains('assistant')) {
-            const badge = document.createElement('div');
-            badge.className = 'tool-badge';
-            badge.textContent = `🔧 ${toolName}`;
-            lastMessage.appendChild(badge);
-        }
+    addSystemMessage(content) {
+        this.addMessage('system', content);
     }
 
-    clearTranscript() {
-        this.transcript.innerHTML = '';
+    addToolBadge(tool) {
+        if (this.currentAssistantDiv) {
+            const badge = document.createElement('div');
+            badge.className = 'tool-badge';
+            badge.textContent = tool;
+            this.currentAssistantDiv.appendChild(badge);
+        }
     }
 
     scrollToBottom() {
@@ -355,14 +389,14 @@ class NovaVoiceAgent {
     arrayBufferToBase64(buffer) {
         const bytes = new Uint8Array(buffer);
         let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
+        for (let i = 0; i < bytes.length; i++) {
             binary += String.fromCharCode(bytes[i]);
         }
         return btoa(binary);
     }
 }
 
-// Initialize on page load
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     window.novaAgent = new NovaVoiceAgent();
 });

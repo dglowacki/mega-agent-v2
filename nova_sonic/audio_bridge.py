@@ -119,20 +119,30 @@ class NovaBridge:
 
         async def on_text(event: ParsedEvent):
             if event.content and self._ws:
+                content = event.content.strip()
+
+                # Skip JSON-like content (turn detection noise, metadata)
+                if content.startswith('{') and content.endswith('}'):
+                    return
+
+                # Skip empty or whitespace-only content
+                if not content:
+                    return
+
                 role = "assistant" if event.role != "USER" else "user"
                 await self._send_ws(self._ws, {
                     "type": "transcript",
                     "role": role,
-                    "content": event.content
+                    "content": content
                 })
                 # Log transcript to memory and file
                 self._transcript.append({
                     "role": role,
-                    "content": event.content
+                    "content": content
                 })
-                self._log_transcript(role, event.content)
+                self._log_transcript(role, content)
                 if self._on_transcript:
-                    await self._on_transcript(role, event.content)
+                    await self._on_transcript(role, content)
 
         async def on_tool_use(event: ParsedEvent):
             if event.tool_name and event.tool_use_id:
