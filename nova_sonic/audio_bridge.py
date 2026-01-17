@@ -9,6 +9,8 @@ import asyncio
 import base64
 import json
 import logging
+import os
+from datetime import datetime
 from typing import Optional, Callable, Awaitable
 
 from .client import NovaSonicClient
@@ -18,6 +20,10 @@ from .mcp_executor import execute_tool
 from . import config
 
 logger = logging.getLogger(__name__)
+
+# Transcript log directory
+TRANSCRIPT_DIR = "/home/ec2-user/mega-agent2/logs/transcripts"
+os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 
 
 class NovaBridge:
@@ -38,6 +44,8 @@ class NovaBridge:
         self._transcript: list[dict] = []
         self._ws = None
         self._on_transcript: Optional[Callable[[str, str], Awaitable[None]]] = None
+        self._session_id: Optional[str] = None
+        self._transcript_file: Optional[str] = None
 
     def is_active(self) -> bool:
         """Check if a session is currently active."""
@@ -56,7 +64,10 @@ class NovaBridge:
 
         self._ws = ws
         self.active = True
-        logger.info("Starting Nova bridge session")
+        self._session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._transcript_file = os.path.join(TRANSCRIPT_DIR, f"nova_{self._session_id}.log")
+        self._log_transcript("SESSION", "Nova voice session started")
+        logger.info(f"Starting Nova bridge session: {self._session_id}")
 
         try:
             # Initialize Nova client
@@ -114,17 +125,20 @@ class NovaBridge:
                     "role": role,
                     "content": event.content
                 })
-                # Log transcript
+                # Log transcript to memory and file
                 self._transcript.append({
                     "role": role,
                     "content": event.content
                 })
+                self._log_transcript(role, event.content)
                 if self._on_transcript:
                     await self._on_transcript(role, event.content)
 
         async def on_tool_use(event: ParsedEvent):
             if event.tool_name and event.tool_use_id:
                 logger.info(f"Tool use: {event.tool_name}")
+                self._log_transcript("TOOL_CALL", f"{event.tool_name}({json.dumps(event.tool_input or {})})")
+
                 # Notify browser
                 await self._send_ws(self._ws, {
                     "type": "tool_use",
@@ -135,6 +149,8 @@ class NovaBridge:
                 # Execute tool
                 try:
                     result = await execute_tool(event.tool_name, event.tool_input or {})
+                    result_str = str(result)[:500]  # Truncate for logging
+                    self._log_transcript("TOOL_RESULT", f"{event.tool_name} -> {result_str}")
                     await self.client.send_tool_result(event.tool_use_id, result)
 
                     await self._send_ws(self._ws, {
@@ -145,6 +161,7 @@ class NovaBridge:
 
                 except Exception as e:
                     logger.error(f"Tool execution error: {e}")
+                    self._log_transcript("TOOL_ERROR", f"{event.tool_name} -> {str(e)}")
                     await self.client.send_tool_result(
                         event.tool_use_id,
                         {"error": str(e)}
@@ -252,6 +269,7 @@ class NovaBridge:
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
+        self._log_transcript("SESSION", "Nova voice session ended")
         self.active = False
         if self.client:
             try:
@@ -260,28 +278,74 @@ class NovaBridge:
                 logger.warning(f"Client cleanup error: {e}")
         self.client = None
         self._ws = None
+        self._transcript_file = None
         logger.info("Nova bridge session ended")
 
     def _get_system_prompt(self) -> str:
         """Get system prompt for Nova."""
-        return """You are a helpful voice assistant. You have access to various tools to help the user.
+        return """You are Jesse's AI voice assistant with access to 110+ tools via the MCP server. You can help with a wide range of tasks.
+
+YOUR CAPABILITIES:
+
+1. INFORMATION & SEARCH
+   - Web search for current information, news, weather
+   - Get current time in any timezone
+   - Weather forecasts for any location
+
+2. CALENDAR & SCHEDULING
+   - View upcoming Google Calendar events
+   - Create new calendar events
+   - Check availability and schedule meetings
+
+3. COMMUNICATION
+   - Send and read Gmail emails
+   - Send Slack messages to channels or users
+   - List recent Slack conversations
+
+4. TASK MANAGEMENT
+   - View and create Linear issues
+   - Manage ClickUp tasks
+   - Track project progress
+
+5. DEVELOPER TOOLS
+   - Read and search files
+   - Run bash commands
+   - Git operations (status, diff, commit, push)
+   - GitHub PR and issue management
+
+6. APP ANALYTICS
+   - App Store Connect sales and downloads
+   - Keno Empire app metrics
+
+7. COMPLEX REASONING
+   - Use ask_claude for complex analysis, code review, document processing, or multi-step reasoning
 
 VOICE OUTPUT GUIDELINES:
-- Keep responses concise and conversational
-- Avoid code blocks, markdown, or long lists
+- Keep responses concise and conversational (2-3 sentences for simple questions)
+- Avoid code blocks, markdown, or long lists in speech
 - Use natural spoken language
-- Maximum 2-3 sentences for simple questions
-- Say "First", "Second" for multi-part answers
-
-AVAILABLE TOOLS:
-- Use tools when the user asks for information you don't have
-- For complex analysis, code, or multi-step reasoning, use the ask_claude tool
-- Execute tools quickly and incorporate results naturally
+- For multi-part answers, say "First", "Second", etc.
+- When listing items, limit to top 3-5 and offer to share more
 
 USER CONTEXT:
+- Name: Jesse
 - Timezone: Pacific Time (PT)
 - Location: Parksville, BC, Canada
-"""
+- Wife: Jess (jessglow@gmail.com personal, jess@ehnow.ca work)
+- Friend: Allen (allen@alistsearch.com)
+- Work email: dave@ehnow.ca (TrailMix Technologies)
+
+When asked about your capabilities, briefly describe the categories above without going into excessive detail."""
+
+    def _log_transcript(self, role: str, content: str) -> None:
+        """Log transcript entry to file."""
+        if self._transcript_file:
+            try:
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                with open(self._transcript_file, "a") as f:
+                    f.write(f"[{timestamp}] {role.upper()}: {content}\n")
+            except Exception as e:
+                logger.error(f"Failed to log transcript: {e}")
 
     def get_transcript(self) -> list[dict]:
         """Get the current transcript."""

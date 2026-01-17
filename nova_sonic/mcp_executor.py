@@ -1,7 +1,7 @@
 """
 MCP Tool Executor
 
-Executes MCP tools by calling the MCP server.
+Executes MCP tools by calling the MCP server v2.
 """
 
 import asyncio
@@ -21,7 +21,7 @@ MCP_BASE_URL = config.MCP_SERVER_URL
 
 async def execute_tool(tool_name: str, params: dict) -> Any:
     """
-    Execute an MCP tool.
+    Execute an MCP tool via the MCP server.
 
     Args:
         tool_name: Name of the tool to execute
@@ -37,21 +37,86 @@ async def execute_tool(tool_name: str, params: dict) -> Any:
         query = params.get("query", "")
         return await ask_claude(query)
 
-    # Call MCP server for other tools
+    # Map voice tool names to MCP tool names
+    tool_mapping = {
+        "get_weather": "web_search",  # Use web search for weather
+        "web_search": "web_search",
+        "list_calendar_events": "google_calendar_list",
+        "create_calendar_event": "google_calendar_create",
+        "send_email": "gmail_send",
+        "list_emails": "gmail_list",
+        "send_slack_message": "slack_send_message",
+        "list_tasks": "linear_list_issues",
+        "create_task": "linear_create_issue",
+        "read_file": "file_read",
+        "list_files": "file_glob",
+        "get_time": "get_time",  # Built-in
+        "keno_analytics": "appstore_get_app",
+        "appstore_sales": "appstore_sales_summary",
+    }
+
+    # Use mapped name or original
+    mcp_tool_name = tool_mapping.get(tool_name, tool_name)
+
+    # Handle built-in tools
+    if tool_name == "get_time":
+        from datetime import datetime
+        import pytz
+        tz_name = params.get("timezone", "America/Los_Angeles")
+        try:
+            tz = pytz.timezone(tz_name)
+            now = datetime.now(tz)
+            return {
+                "time": now.strftime("%I:%M %p"),
+                "date": now.strftime("%A, %B %d, %Y"),
+                "timezone": tz_name
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    # Weather via web search
+    if tool_name == "get_weather":
+        location = params.get("location", "Parksville, BC")
+        params = {"query": f"current weather in {location}"}
+        mcp_tool_name = "web_search"
+
+    # Call MCP server using the message endpoint
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{MCP_BASE_URL}/tools/call",
-                json={
-                    "name": tool_name,
+            # Use MCP protocol format
+            message = {
+                "jsonrpc": "2.0",
+                "id": f"tool-{tool_name}",
+                "method": "tools/call",
+                "params": {
+                    "name": mcp_tool_name,
                     "arguments": params
                 }
+            }
+
+            response = await client.post(
+                f"{MCP_BASE_URL}/messages",
+                json=message
             )
 
-            if response.status_code == 200:
+            if response.status_code in [200, 202]:
                 result = response.json()
                 logger.info(f"Tool {tool_name} executed successfully")
-                return result.get("result", result)
+
+                # Extract result from MCP response
+                if "result" in result:
+                    content = result["result"].get("content", [])
+                    if content and isinstance(content, list):
+                        # Extract text from content blocks
+                        texts = []
+                        for block in content:
+                            if block.get("type") == "text":
+                                texts.append(block.get("text", ""))
+                        return "\n".join(texts) if texts else result["result"]
+                    return result["result"]
+                elif "error" in result:
+                    return {"error": result["error"].get("message", str(result["error"]))}
+                return result
             else:
                 error = f"MCP server returned {response.status_code}: {response.text}"
                 logger.error(error)
@@ -77,7 +142,7 @@ async def list_available_tools() -> list[dict]:
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{MCP_BASE_URL}/tools/list")
+            response = await client.get(f"{MCP_BASE_URL}/tools")
 
             if response.status_code == 200:
                 result = response.json()
