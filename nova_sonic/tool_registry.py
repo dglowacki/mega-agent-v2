@@ -1,29 +1,94 @@
 """
 Nova Tool Registry
 
-Converts MCP tools to Nova 2 Sonic tool format.
+Fetches tools from MCP server and converts to Nova 2 Sonic format.
 """
 
 import logging
-from typing import Any
+import httpx
+from typing import Optional
+from . import config
 
 logger = logging.getLogger(__name__)
+
+# Cache for tools
+_cached_tools: Optional[list[dict]] = None
+
+
+def _fetch_mcp_tools() -> list[dict]:
+    """Fetch tools from MCP server."""
+    try:
+        response = httpx.get(f"{config.MCP_SERVER_URL}/tools", timeout=10.0)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("tools", [])
+    except Exception as e:
+        logger.error(f"Failed to fetch MCP tools: {e}")
+    return []
+
+
+def _convert_to_nova_format(mcp_tool: dict) -> dict:
+    """Convert MCP tool schema to Nova format."""
+    return {
+        "toolSpec": {
+            "name": mcp_tool["name"],
+            "description": mcp_tool.get("description", ""),
+            "inputSchema": {
+                "json": mcp_tool.get("inputSchema", {"type": "object", "properties": {}})
+            }
+        }
+    }
+
+
+# Tools most useful for voice interactions
+VOICE_RELEVANT_TOOLS = {
+    # Information
+    "web_search", "web_fetch",
+
+    # Calendar
+    "google_calendar_list", "google_calendar_create",
+
+    # Email
+    "gmail_list", "gmail_send", "gmail_read",
+
+    # Slack
+    "slack_send_dm", "slack_send_channel", "slack_send_image",
+    "slack_get_messages", "slack_get_unread",
+
+    # Tasks
+    "linear_list_issues", "linear_create_issue",
+    "clickup_list_tasks", "clickup_create_task",
+
+    # Images
+    "image_generate", "image_generate_icon",
+
+    # Files (basic)
+    "file_read", "file_glob",
+
+    # App analytics
+    "appstore_sales_summary", "appstore_get_app",
+
+    # GitHub
+    "github_list_prs", "github_get_pr", "github_list_issues",
+}
 
 
 def get_tool_definitions() -> list[dict]:
     """
-    Get all tool definitions in Nova format.
+    Get tool definitions in Nova format.
 
-    Returns:
-        List of tool specs for Nova promptStart
+    Fetches from MCP server and filters to voice-relevant tools.
+    Always includes ask_claude for complex reasoning.
     """
+    global _cached_tools
+
     tools = []
 
-    # ask_claude - always available
+    # Always add ask_claude (handled locally, not via MCP)
     tools.append({
         "toolSpec": {
             "name": "ask_claude",
-            "description": "Ask Claude for help with complex reasoning, analysis, code review, document processing, or multi-step tasks. Use when you need deep thinking or access to specialized capabilities.",
+            "description": "Ask Claude for help with complex reasoning, analysis, code review, or multi-step tasks. Use for anything requiring deep thinking.",
             "inputSchema": {
                 "json": {
                     "type": "object",
@@ -39,356 +104,7 @@ def get_tool_definitions() -> list[dict]:
         }
     })
 
-    # Weather
-    tools.append({
-        "toolSpec": {
-            "name": "get_weather",
-            "description": "Get current weather and forecast for a location",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "City name or location (default: Parksville, BC)"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    # Web search
-    tools.append({
-        "toolSpec": {
-            "name": "web_search",
-            "description": "Search the web for current information",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Search query"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            }
-        }
-    })
-
-    # Calendar
-    tools.append({
-        "toolSpec": {
-            "name": "list_calendar_events",
-            "description": "List upcoming calendar events",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "days": {
-                            "type": "integer",
-                            "description": "Number of days to look ahead (default: 7)"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "create_calendar_event",
-            "description": "Create a new calendar event",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "Event title"
-                        },
-                        "start_time": {
-                            "type": "string",
-                            "description": "Start time (ISO format or natural language)"
-                        },
-                        "duration_minutes": {
-                            "type": "integer",
-                            "description": "Duration in minutes (default: 60)"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Event description"
-                        }
-                    },
-                    "required": ["title", "start_time"]
-                }
-            }
-        }
-    })
-
-    # Email
-    tools.append({
-        "toolSpec": {
-            "name": "send_email",
-            "description": "Send an email",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "to": {
-                            "type": "string",
-                            "description": "Recipient email address"
-                        },
-                        "subject": {
-                            "type": "string",
-                            "description": "Email subject"
-                        },
-                        "body": {
-                            "type": "string",
-                            "description": "Email body"
-                        }
-                    },
-                    "required": ["to", "subject", "body"]
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "list_emails",
-            "description": "List recent emails from inbox",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "count": {
-                            "type": "integer",
-                            "description": "Number of emails to list (default: 10)"
-                        },
-                        "unread_only": {
-                            "type": "boolean",
-                            "description": "Only show unread emails"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    # Slack
-    tools.append({
-        "toolSpec": {
-            "name": "send_slack_message",
-            "description": "Send a Slack message",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "channel": {
-                            "type": "string",
-                            "description": "Channel name or user for DM"
-                        },
-                        "message": {
-                            "type": "string",
-                            "description": "Message to send"
-                        }
-                    },
-                    "required": ["channel", "message"]
-                }
-            }
-        }
-    })
-
-    # Tasks
-    tools.append({
-        "toolSpec": {
-            "name": "list_tasks",
-            "description": "List tasks from task manager",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "status": {
-                            "type": "string",
-                            "enum": ["open", "completed", "all"],
-                            "description": "Filter by status"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "create_task",
-            "description": "Create a new task",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "Task title"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Task description"
-                        },
-                        "due_date": {
-                            "type": "string",
-                            "description": "Due date"
-                        },
-                        "priority": {
-                            "type": "string",
-                            "enum": ["low", "medium", "high", "urgent"],
-                            "description": "Priority level"
-                        }
-                    },
-                    "required": ["title"]
-                }
-            }
-        }
-    })
-
-    # App analytics
-    tools.append({
-        "toolSpec": {
-            "name": "keno_analytics",
-            "description": "Get Keno Empire app analytics - revenue, DAU, retention",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "metric": {
-                            "type": "string",
-                            "enum": ["revenue", "dau", "retention", "summary"],
-                            "description": "Metric to fetch"
-                        },
-                        "date": {
-                            "type": "string",
-                            "description": "Date to query (default: today)"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "appstore_sales",
-            "description": "Get App Store sales data",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "app": {
-                            "type": "string",
-                            "description": "App name or ID"
-                        },
-                        "period": {
-                            "type": "string",
-                            "enum": ["today", "week", "month"],
-                            "description": "Time period"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    # Shortcuts
-    tools.append({
-        "toolSpec": {
-            "name": "list_shortcuts",
-            "description": "List available shortcuts/automations",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "run_shortcut",
-            "description": "Run a shortcut/automation",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "Shortcut name"
-                        },
-                        "input": {
-                            "type": "string",
-                            "description": "Optional input for the shortcut"
-                        }
-                    },
-                    "required": ["name"]
-                }
-            }
-        }
-    })
-
-    # File operations (basic)
-    tools.append({
-        "toolSpec": {
-            "name": "read_file",
-            "description": "Read contents of a file",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "File path"
-                        }
-                    },
-                    "required": ["path"]
-                }
-            }
-        }
-    })
-
-    tools.append({
-        "toolSpec": {
-            "name": "list_files",
-            "description": "List files in a directory",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Directory path"
-                        },
-                        "pattern": {
-                            "type": "string",
-                            "description": "File pattern (e.g., *.py)"
-                        }
-                    },
-                    "required": []
-                }
-            }
-        }
-    })
-
-    # Time
+    # Add built-in get_time (doesn't need MCP)
     tools.append({
         "toolSpec": {
             "name": "get_time",
@@ -408,53 +124,23 @@ def get_tool_definitions() -> list[dict]:
         }
     })
 
-    # Image generation
-    tools.append({
-        "toolSpec": {
-            "name": "generate_image",
-            "description": "Generate an AI image from a text description using DALL-E/GPT-Image",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "prompt": {
-                            "type": "string",
-                            "description": "Detailed description of the image to generate"
-                        }
-                    },
-                    "required": ["prompt"]
-                }
-            }
-        }
-    })
+    # Fetch MCP tools
+    mcp_tools = _fetch_mcp_tools()
 
-    # Send image to Slack
-    tools.append({
-        "toolSpec": {
-            "name": "send_image_to_slack",
-            "description": "Generate an AI image and send it to a Slack user or channel",
-            "inputSchema": {
-                "json": {
-                    "type": "object",
-                    "properties": {
-                        "prompt": {
-                            "type": "string",
-                            "description": "Description of the image to generate"
-                        },
-                        "recipient": {
-                            "type": "string",
-                            "description": "Slack recipient: @username, #channel, or 'self'"
-                        },
-                        "message": {
-                            "type": "string",
-                            "description": "Optional message to include with the image"
-                        }
-                    },
-                    "required": ["prompt", "recipient"]
-                }
-            }
-        }
-    })
+    if mcp_tools:
+        _cached_tools = mcp_tools
+        logger.info(f"Fetched {len(mcp_tools)} tools from MCP server")
+    elif _cached_tools:
+        mcp_tools = _cached_tools
+        logger.info(f"Using {len(mcp_tools)} cached MCP tools")
+    else:
+        logger.warning("No MCP tools available")
+
+    # Filter to voice-relevant tools and convert format
+    for mcp_tool in mcp_tools:
+        name = mcp_tool.get("name", "")
+        if name in VOICE_RELEVANT_TOOLS:
+            tools.append(_convert_to_nova_format(mcp_tool))
 
     logger.info(f"Registered {len(tools)} tools for Nova")
     return tools

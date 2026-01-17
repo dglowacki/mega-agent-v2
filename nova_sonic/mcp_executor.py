@@ -1,27 +1,24 @@
 """
 MCP Tool Executor
 
-Executes MCP tools by calling the MCP server v2.
+Executes tools by calling the MCP server.
 """
 
-import asyncio
-import json
 import logging
 import httpx
-from typing import Any, Optional
+from typing import Any
 
 from . import config
 from .claude_bridge import ask_claude
 
 logger = logging.getLogger(__name__)
 
-# MCP Server base URL
 MCP_BASE_URL = config.MCP_SERVER_URL
 
 
 async def execute_tool(tool_name: str, params: dict) -> Any:
     """
-    Execute an MCP tool via the MCP server.
+    Execute a tool via the MCP server.
 
     Args:
         tool_name: Name of the tool to execute
@@ -30,172 +27,56 @@ async def execute_tool(tool_name: str, params: dict) -> Any:
     Returns:
         Tool execution result
     """
-    logger.info(f"Executing tool: {tool_name} with params: {params}")
+    logger.info(f"Executing tool: {tool_name}")
 
-    # Special handling for ask_claude
+    # Handle local tools
     if tool_name == "ask_claude":
         query = params.get("query", "")
         return await ask_claude(query)
 
-    # Map voice tool names to MCP tool names
-    tool_mapping = {
-        "get_weather": "web_search",  # Use web search for weather
-        "web_search": "web_search",
-        "list_calendar_events": "google_calendar_list",
-        "create_calendar_event": "google_calendar_create",
-        "send_email": "gmail_send",
-        "list_emails": "gmail_list",
-        "send_slack_message": "slack_send_dm",
-        "list_tasks": "linear_list_issues",
-        "create_task": "linear_create_issue",
-        "read_file": "file_read",
-        "list_files": "file_glob",
-        "get_time": "get_time",  # Built-in
-        "keno_analytics": "appstore_get_app",
-        "appstore_sales": "appstore_sales_summary",
-        "generate_image": "image_generate",
-        "send_image_to_slack": "slack_send_image",
-    }
-
-    # Use mapped name or original
-    mcp_tool_name = tool_mapping.get(tool_name, tool_name)
-
-    # Handle built-in tools
     if tool_name == "get_time":
         from datetime import datetime
-        import pytz
-        tz_name = params.get("timezone", "America/Los_Angeles")
         try:
+            import pytz
+            tz_name = params.get("timezone", "America/Los_Angeles")
             tz = pytz.timezone(tz_name)
             now = datetime.now(tz)
-            return {
-                "time": now.strftime("%I:%M %p"),
-                "date": now.strftime("%A, %B %d, %Y"),
-                "timezone": tz_name
-            }
+            return f"It's {now.strftime('%I:%M %p')} on {now.strftime('%A, %B %d, %Y')} ({tz_name})"
         except Exception as e:
-            return {"error": str(e)}
+            return f"Error getting time: {e}"
 
-    # Weather via web search
-    if tool_name == "get_weather":
-        location = params.get("location", "Parksville, BC")
-        params = {"query": f"current weather in {location}"}
-        mcp_tool_name = "web_search"
-
-    # Call MCP server using the message endpoint
+    # Call MCP server for everything else
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            # Use MCP protocol format
             message = {
                 "jsonrpc": "2.0",
                 "id": f"tool-{tool_name}",
                 "method": "tools/call",
                 "params": {
-                    "name": mcp_tool_name,
+                    "name": tool_name,
                     "arguments": params
                 }
             }
 
-            response = await client.post(
-                f"{MCP_BASE_URL}/messages",
-                json=message
-            )
+            response = await client.post(f"{MCP_BASE_URL}/messages", json=message)
 
             if response.status_code in [200, 202]:
                 result = response.json()
-                logger.info(f"Tool {tool_name} executed successfully")
 
-                # Extract result from MCP response
+                # Extract content from MCP response
                 if "result" in result:
                     content = result["result"].get("content", [])
                     if content and isinstance(content, list):
-                        # Extract text from content blocks
-                        texts = []
-                        for block in content:
-                            if block.get("type") == "text":
-                                texts.append(block.get("text", ""))
+                        texts = [b.get("text", "") for b in content if b.get("type") == "text"]
                         return "\n".join(texts) if texts else result["result"]
                     return result["result"]
                 elif "error" in result:
-                    return {"error": result["error"].get("message", str(result["error"]))}
+                    return f"Error: {result['error'].get('message', result['error'])}"
                 return result
             else:
-                error = f"MCP server returned {response.status_code}: {response.text}"
-                logger.error(error)
-                return {"error": error}
+                return f"MCP error: {response.status_code}"
 
     except httpx.TimeoutException:
-        error = f"Tool {tool_name} timed out"
-        logger.error(error)
-        return {"error": error}
-
+        return f"Tool {tool_name} timed out"
     except Exception as e:
-        error = f"Tool execution failed: {str(e)}"
-        logger.error(error)
-        return {"error": error}
-
-
-async def list_available_tools() -> list[dict]:
-    """
-    Get list of available tools from MCP server.
-
-    Returns:
-        List of tool definitions
-    """
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{MCP_BASE_URL}/tools")
-
-            if response.status_code == 200:
-                result = response.json()
-                return result.get("tools", [])
-            else:
-                logger.error(f"Failed to list tools: {response.status_code}")
-                return []
-
-    except Exception as e:
-        logger.error(f"Failed to list tools: {e}")
-        return []
-
-
-# Voice-relevant tools to expose directly to Nova
-# These are the tools that make sense for voice interactions
-VOICE_TOOLS = [
-    # Quick lookups
-    "get_weather",
-    "get_time",
-    "web_search",
-
-    # Calendar/scheduling
-    "list_calendar_events",
-    "create_calendar_event",
-
-    # Communication
-    "send_email",
-    "list_emails",
-    "send_slack_message",
-
-    # Tasks
-    "list_tasks",
-    "create_task",
-
-    # Analytics (for your apps)
-    "keno_analytics",
-    "appstore_sales",
-
-    # Shortcuts
-    "list_shortcuts",
-    "run_shortcut",
-
-    # Files (basic)
-    "read_file",
-    "list_files",
-
-    # ask_claude for complex tasks
-    "ask_claude"
-]
-
-
-def is_voice_relevant(tool_name: str) -> bool:
-    """Check if a tool is voice-relevant."""
-    return tool_name in VOICE_TOOLS or tool_name == "ask_claude"
+        return f"Tool error: {e}"
