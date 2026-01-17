@@ -45,7 +45,7 @@ async def execute_tool(tool_name: str, params: dict) -> Any:
         "create_calendar_event": "google_calendar_create",
         "send_email": "gmail_send",
         "list_emails": "gmail_list",
-        "send_slack_message": "slack_send_message",
+        "send_slack_message": "slack_send_dm",
         "list_tasks": "linear_list_issues",
         "create_task": "linear_create_issue",
         "read_file": "file_read",
@@ -53,6 +53,8 @@ async def execute_tool(tool_name: str, params: dict) -> Any:
         "get_time": "get_time",  # Built-in
         "keno_analytics": "appstore_get_app",
         "appstore_sales": "appstore_sales_summary",
+        "generate_image": "image_generate",
+        "send_image_to_slack": "slack_send_image",
     }
 
     # Use mapped name or original

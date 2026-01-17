@@ -188,7 +188,7 @@ def slack_get_messages(
         workspace: 'flycow' or 'trailmix'
 
     Returns:
-        Recent messages
+        Recent messages with content
     """
     slack = _get_slack_client(workspace)
     if not slack:
@@ -214,7 +214,27 @@ def slack_get_messages(
         if not messages:
             return f"No messages found in {channel}"
 
-        return f"Retrieved {len(messages)} messages from {channel}"
+        # Format messages with content
+        lines = [f"Retrieved {len(messages)} messages from {channel}:\n"]
+        
+        for msg in reversed(messages):
+            if msg.get('type') == 'message':
+                user = msg.get('user', 'Unknown')
+                text = msg.get('text', '')
+                ts = float(msg['ts'])
+                from datetime import datetime
+                timestamp = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Get user name if possible
+                try:
+                    user_info = slack.client.users_info(user=user)
+                    user_name = user_info['user']['real_name']
+                except:
+                    user_name = user
+                
+                lines.append(f"[{timestamp}] {user_name}: {text}")
+
+        return "\n".join(lines)
 
     except Exception as e:
         return f"Error getting messages: {str(e)}"
@@ -285,6 +305,38 @@ def slack_get_mentions(
 
     except Exception as e:
         return f"Error getting mentions: {str(e)}"
+
+
+def slack_get_unread(workspace: str = "flycow") -> str:
+    """
+    Get channels with unread messages.
+
+    Args:
+        workspace: 'flycow' or 'trailmix'
+
+    Returns:
+        List of channels with unread message counts
+    """
+    slack = _get_slack_client(workspace)
+    if not slack:
+        return f"Error: Could not connect to Slack workspace '{workspace}'"
+
+    try:
+        unread_channels = slack.get_unread_messages()
+
+        if not unread_channels:
+            return f"No unread messages in {workspace}"
+
+        total = sum(ch['count'] for ch in unread_channels)
+        lines = [f"Unread messages in {workspace}: {total} total\n"]
+        
+        for ch in unread_channels:
+            lines.append(f"  - {ch['name']}: {ch['count']} unread (ID: {ch['id']})")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error getting unread messages: {str(e)}"
 
 
 def register_slack_tools(server) -> int:
@@ -401,4 +453,119 @@ def register_slack_tools(server) -> int:
         category="slack"
     )
 
-    return 7  # Number of tools registered
+    server.register_tool(
+        name="slack_get_unread",
+        description="Get channels with unread messages and their counts.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workspace": {"type": "string", "description": "Workspace: flycow or trailmix", "default": "flycow"}
+            }
+        },
+        handler=slack_get_unread,
+        requires_approval=False,
+        category="slack"
+    )
+
+    server.register_tool(
+        name="slack_send_image",
+        description="Generate an AI image and send it to Slack. Creates the image first, then uploads it.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "Description of the image to generate"},
+                "recipient": {"type": "string", "description": "Slack recipient: @username, email, channel name, or 'self'"},
+                "message": {"type": "string", "description": "Optional message to include with the image"},
+                "workspace": {"type": "string", "description": "Workspace: flycow or trailmix", "default": "flycow"}
+            },
+            "required": ["prompt", "recipient"]
+        },
+        handler=slack_send_image,
+        requires_approval=True,
+        category="slack"
+    )
+
+    return 9  # Number of tools registered
+
+
+def slack_send_image(
+    prompt: str,
+    recipient: str,
+    message: str = None,
+    workspace: str = "flycow"
+) -> str:
+    """
+    Generate an AI image and send it to Slack.
+
+    Args:
+        prompt: Description of the image to generate
+        recipient: @username, email, #channel, or 'self'
+        message: Optional message to include with the image
+        workspace: 'flycow' or 'trailmix'
+
+    Returns:
+        Success or error message
+    """
+    import os
+    import tempfile
+    from datetime import datetime
+
+    # First, generate the image
+    try:
+        from mcp.tools.image_tools import image_generate
+        result = image_generate(prompt=prompt, size="1024x1024", quality="standard")
+
+        if "error" in result.lower():
+            return f"Failed to generate image: {result}"
+
+        # Extract file path from result
+        # The image_generate function returns a path like "/home/.../generated_images/..."
+        if "saved to" in result.lower():
+            # Parse the path from the result message
+            import re
+            match = re.search(r'saved to[:\s]+([^\s]+\.png)', result, re.IGNORECASE)
+            if match:
+                image_path = match.group(1)
+            else:
+                return f"Could not find image path in result: {result}"
+        else:
+            return f"Unexpected image generation result: {result}"
+
+        if not os.path.exists(image_path):
+            return f"Generated image not found at: {image_path}"
+
+    except Exception as e:
+        return f"Error generating image: {str(e)}"
+
+    # Now upload to Slack
+    slack = _get_slack_client(workspace)
+    if not slack:
+        return f"Error: Could not connect to Slack workspace '{workspace}'"
+
+    try:
+        title = f"AI Generated: {prompt[:50]}..." if len(prompt) > 50 else f"AI Generated: {prompt}"
+
+        if recipient.startswith('#'):
+            # Channel
+            channel_name = recipient[1:]
+            channels = slack.get_all_channels()
+            channel_id = None
+            for ch in channels:
+                if ch['name'] == channel_name:
+                    channel_id = ch['id']
+                    break
+            if not channel_id:
+                return f"Channel {recipient} not found"
+
+            result = slack.upload_file(channel_id, image_path, title=title, initial_comment=message)
+        else:
+            # DM to user
+            result = slack.upload_file_to_user(recipient, image_path, title=title, initial_comment=message)
+
+        if result:
+            return f"Image generated and sent to {recipient} in {workspace} workspace"
+        else:
+            return f"Failed to upload image to {recipient}"
+
+    except Exception as e:
+        return f"Error sending image to Slack: {str(e)}"

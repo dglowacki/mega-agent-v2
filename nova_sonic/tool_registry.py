@@ -408,6 +408,54 @@ def get_tool_definitions() -> list[dict]:
         }
     })
 
+    # Image generation
+    tools.append({
+        "toolSpec": {
+            "name": "generate_image",
+            "description": "Generate an AI image from a text description using DALL-E/GPT-Image",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Detailed description of the image to generate"
+                        }
+                    },
+                    "required": ["prompt"]
+                }
+            }
+        }
+    })
+
+    # Send image to Slack
+    tools.append({
+        "toolSpec": {
+            "name": "send_image_to_slack",
+            "description": "Generate an AI image and send it to a Slack user or channel",
+            "inputSchema": {
+                "json": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Description of the image to generate"
+                        },
+                        "recipient": {
+                            "type": "string",
+                            "description": "Slack recipient: @username, #channel, or 'self'"
+                        },
+                        "message": {
+                            "type": "string",
+                            "description": "Optional message to include with the image"
+                        }
+                    },
+                    "required": ["prompt", "recipient"]
+                }
+            }
+        }
+    })
+
     logger.info(f"Registered {len(tools)} tools for Nova")
     return tools
 

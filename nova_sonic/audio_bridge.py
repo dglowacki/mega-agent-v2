@@ -58,9 +58,10 @@ class NovaBridge:
         Args:
             ws: Flask-Sock WebSocket connection
         """
+        # If a session is "active" but stale, force cleanup
         if self.active:
-            await self._send_ws(ws, {"type": "error", "message": "Session already active"})
-            return
+            logger.warning("Forcing cleanup of stale session")
+            await self._cleanup()
 
         self._ws = ws
         self.active = True
@@ -279,7 +280,8 @@ class NovaBridge:
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
-        self._log_transcript("SESSION", "Nova voice session ended")
+        if self._transcript_file:
+            self._log_transcript("SESSION", "Nova voice session ended")
         self.active = False
         if self.client:
             try:
@@ -327,7 +329,12 @@ YOUR CAPABILITIES:
    - App Store Connect sales and downloads
    - Keno Empire app metrics
 
-7. COMPLEX REASONING
+7. IMAGE GENERATION
+   - Generate AI images from text descriptions
+   - Send generated images to Slack users or channels
+   - Create icons, banners, and artwork
+
+8. COMPLEX REASONING
    - Use ask_claude for complex analysis, code review, document processing, or multi-step reasoning
 
 VOICE OUTPUT GUIDELINES:

@@ -832,6 +832,88 @@ class SlackMessageReader:
             print(f"Error getting user channels: {e.response['error']}")
             return []
 
+    def upload_file(self, channel_id: str, file_path: str, title: str = None, initial_comment: str = None):
+        """Upload a file to a Slack channel or DM.
+
+        Args:
+            channel_id: Channel or DM ID to upload to
+            file_path: Path to the file to upload
+            title: Optional title for the file
+            initial_comment: Optional message to include with the file
+
+        Returns:
+            File upload result or None on error
+        """
+        try:
+            result = self.client.files_upload_v2(
+                channel=channel_id,
+                file=file_path,
+                title=title,
+                initial_comment=initial_comment
+            )
+
+            if result.get('ok'):
+                file_info = result.get('file', {})
+                print(f"✓ File uploaded to {channel_id}")
+                print(f"  Title: {title or file_info.get('name', 'Untitled')}")
+                return result
+            else:
+                print(f"Error uploading file: {result}")
+                return None
+
+        except SlackApiError as e:
+            print(f"Error uploading file: {e.response['error']}")
+            return None
+
+    def upload_file_to_user(self, recipient: str, file_path: str, title: str = None, initial_comment: str = None):
+        """Upload a file to a user via DM.
+
+        Args:
+            recipient: @username, email, user ID, or 'self'
+            file_path: Path to the file to upload
+            title: Optional title for the file
+            initial_comment: Optional message to include with the file
+
+        Returns:
+            File upload result or None on error
+        """
+        try:
+            # Resolve recipient to user_id
+            if recipient.lower() == 'self':
+                user_id = self.user_id
+            elif recipient.startswith('@'):
+                username = recipient[1:]
+                response = self.client.users_list()
+                user_id = None
+                for user in response['members']:
+                    if user.get('name') == username:
+                        user_id = user['id']
+                        break
+                if not user_id:
+                    print(f"Could not find user: {recipient}")
+                    return None
+            elif '@' in recipient and '.' in recipient:
+                user = self.get_user_by_email(recipient)
+                if user:
+                    user_id = user['id']
+                else:
+                    print(f"Could not find user with email: {recipient}")
+                    return None
+            else:
+                user_id = recipient
+
+            # Open DM conversation
+            response = self.client.conversations_open(users=user_id)
+            channel_id = response['channel']['id']
+
+            # Upload file to the DM
+            return self.upload_file(channel_id, file_path, title, initial_comment)
+
+        except SlackApiError as e:
+            print(f"Error uploading file to user: {e.response['error']}")
+            return None
+
+
 if __name__ == "__main__":
     print("FlyCow Slack Message Reader")
     print("=" * 80 + "\n")
