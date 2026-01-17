@@ -63,13 +63,15 @@ class NovaBridge:
             self.client = NovaSonicClient()
             await self.client.connect()
 
-            # Send session start
-            await self.client.send_session_start()
-
-            # Get tool definitions and send prompt start
+            # Get tool definitions and send session start with tools
             tools = get_tool_definitions()
+            await self.client.send_session_start(tools=tools)
+
+            # Send prompt start (tools are in sessionStart)
+            await self.client.send_prompt_start()
+
+            # Send system message
             system_prompt = self._get_system_prompt()
-            await self.client.send_prompt_start(system_prompt, tools)
             await self.client.send_system_message(system_prompt)
 
             # Register event handlers

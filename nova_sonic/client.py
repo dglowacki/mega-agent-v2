@@ -9,6 +9,7 @@ import asyncio
 import base64
 import json
 import logging
+import uuid
 from typing import AsyncIterator, Optional, Callable, Any
 
 from . import config
@@ -38,6 +39,11 @@ class NovaSonicClient:
         self.is_active = False
         self._event_handlers: dict[str, list[Callable]] = {}
 
+        # Session identifiers
+        self.prompt_name = None
+        self.system_content_name = None
+        self.audio_content_name = None
+
     async def connect(self) -> bool:
         """
         Establish bidirectional stream with Nova 2 Sonic.
@@ -53,14 +59,15 @@ class NovaSonicClient:
             from smithy_aws_core.identity import EnvironmentCredentialsResolver
             from smithy_aws_core.auth import SigV4AuthScheme
             from aws_sdk_bedrock_runtime.auth import HTTPAuthSchemeResolver
+            from smithy_core.shapes import ShapeID
 
             # Initialize client
             client_config = Config(
                 endpoint_uri=config.BEDROCK_ENDPOINT,
                 region=self.region,
                 aws_credentials_identity_resolver=EnvironmentCredentialsResolver(),
-                http_auth_scheme_resolver=HTTPAuthSchemeResolver(),
-                http_auth_schemes={"aws.auth#sigv4": SigV4AuthScheme()}
+                auth_scheme_resolver=HTTPAuthSchemeResolver(),
+                auth_schemes={ShapeID("aws.auth#sigv4"): SigV4AuthScheme(service="bedrock")}
             )
 
             self.client = BedrockRuntimeClient(config=client_config)
@@ -71,6 +78,11 @@ class NovaSonicClient:
                     model_id=self.model_id
                 )
             )
+
+            # Generate unique identifiers for this session
+            self.prompt_name = str(uuid.uuid4())
+            self.system_content_name = str(uuid.uuid4())
+            self.audio_content_name = str(uuid.uuid4())
 
             self.is_active = True
             logger.info(f"Connected to Nova 2 Sonic ({self.model_id})")
@@ -84,43 +96,45 @@ class NovaSonicClient:
             logger.error(f"Failed to connect to Nova 2 Sonic: {e}")
             raise
 
-    async def send_session_start(self) -> None:
-        """Send session initialization event."""
+    async def send_session_start(self, tools: list[dict] = None) -> None:
+        """Send session initialization event with optional tools.
+
+        Args:
+            tools: List of tool definitions in Nova format
+        """
+        session_config = {
+            "inferenceConfiguration": {
+                "maxTokens": config.MAX_TOKENS,
+                "topP": config.TOP_P,
+                "temperature": config.TEMPERATURE
+            }
+        }
+
+        # Tools must be configured in sessionStart for bidirectional streaming
+        if tools:
+            session_config["toolConfiguration"] = {
+                "tools": tools,
+                "toolChoice": {"auto": {}}
+            }
+
         event = {
             "event": {
-                "sessionStart": {
-                    "inferenceConfiguration": {
-                        "maxTokens": config.MAX_TOKENS,
-                        "topP": config.TOP_P,
-                        "temperature": config.TEMPERATURE
-                    },
-                    "turnDetectionConfiguration": {
-                        "endpointingSensitivity": config.ENDPOINTING_SENSITIVITY
-                    }
-                }
+                "sessionStart": session_config
             }
         }
         await self._send_event(event)
-        logger.debug("Sent sessionStart event")
+        logger.debug(f"Sent sessionStart event (tools={len(tools) if tools else 0})")
 
-    async def send_prompt_start(
-        self,
-        system_prompt: str,
-        tools: list[dict],
-        prompt_name: str = "voice-agent-session"
-    ) -> None:
+    async def send_prompt_start(self) -> None:
         """
-        Send prompt configuration with system prompt and tools.
+        Send prompt configuration with audio output settings.
 
-        Args:
-            system_prompt: System instructions for Nova
-            tools: List of tool definitions in Nova format
-            prompt_name: Unique identifier for this prompt
+        Note: Tools are configured in sessionStart for bidirectional streaming.
         """
         event = {
             "event": {
                 "promptStart": {
-                    "promptName": prompt_name,
+                    "promptName": self.prompt_name,
                     "textOutputConfiguration": {
                         "mediaType": "text/plain"
                     },
@@ -132,62 +146,79 @@ class NovaSonicClient:
                         "voiceId": config.VOICE_ID,
                         "encoding": config.AUDIO_ENCODING,
                         "audioType": config.AUDIO_TYPE
-                    },
-                    "toolUseOutputConfiguration": {
-                        "mediaType": "application/json"
-                    },
-                    "toolConfiguration": {
-                        "tools": tools,
-                        "toolChoice": {"auto": {}}
                     }
                 }
             }
         }
+
         await self._send_event(event)
-        logger.debug(f"Sent promptStart with {len(tools)} tools")
+        logger.debug(f"Sent promptStart (promptName={self.prompt_name})")
 
     async def send_system_message(self, content: str) -> None:
-        """Send system message content."""
-        # textContentStart
+        """Send system message content using proper content flow."""
+        # contentStart for SYSTEM role
         await self._send_event({
             "event": {
-                "textContentStart": {
-                    "role": "SYSTEM"
+                "contentStart": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.system_content_name,
+                    "type": "TEXT",
+                    "interactive": True,
+                    "role": "SYSTEM",
+                    "textInputConfiguration": {
+                        "mediaType": "text/plain"
+                    }
                 }
             }
         })
 
-        # textContentDelta
+        # textInput with the content
         await self._send_event({
             "event": {
-                "textContentDelta": {
+                "textInput": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.system_content_name,
                     "content": content
                 }
             }
         })
 
-        # textContentEnd
+        # contentEnd
         await self._send_event({
             "event": {
-                "textContentEnd": {}
+                "contentEnd": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.system_content_name
+                }
             }
         })
         logger.debug("Sent system message")
 
     async def send_audio_start(self) -> None:
         """Signal start of user audio input."""
+        # Generate new audio content name for this turn
+        self.audio_content_name = str(uuid.uuid4())
+
         await self._send_event({
             "event": {
-                "audioInputStart": {
-                    "mediaType": "audio/lpcm",
-                    "sampleRateHertz": config.AUDIO_INPUT_SAMPLE_RATE,
-                    "sampleSizeBits": config.AUDIO_SAMPLE_SIZE_BITS,
-                    "channelCount": config.AUDIO_CHANNELS,
-                    "encoding": config.AUDIO_ENCODING
+                "contentStart": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.audio_content_name,
+                    "type": "AUDIO",
+                    "interactive": True,
+                    "role": "USER",
+                    "audioInputConfiguration": {
+                        "mediaType": "audio/lpcm",
+                        "sampleRateHertz": config.AUDIO_INPUT_SAMPLE_RATE,
+                        "sampleSizeBits": config.AUDIO_SAMPLE_SIZE_BITS,
+                        "channelCount": config.AUDIO_CHANNELS,
+                        "audioType": "SPEECH",
+                        "encoding": config.AUDIO_ENCODING
+                    }
                 }
             }
         })
-        logger.debug("Sent audioInputStart")
+        logger.debug("Sent audio contentStart")
 
     async def send_audio_chunk(self, audio_bytes: bytes) -> None:
         """
@@ -200,6 +231,8 @@ class NovaSonicClient:
         await self._send_event({
             "event": {
                 "audioInput": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.audio_content_name,
                     "content": encoded
                 }
             }
@@ -209,16 +242,18 @@ class NovaSonicClient:
         """Signal end of user audio input."""
         await self._send_event({
             "event": {
-                "audioInputEnd": {}
+                "contentEnd": {
+                    "promptName": self.prompt_name,
+                    "contentName": self.audio_content_name
+                }
             }
         })
-        logger.debug("Sent audioInputEnd")
+        logger.debug("Sent audio contentEnd")
 
     async def send_tool_result(
         self,
         tool_use_id: str,
-        result: Any,
-        prompt_name: str = "voice-agent-session"
+        result: Any
     ) -> None:
         """
         Send tool execution result back to Nova.
@@ -226,19 +261,61 @@ class NovaSonicClient:
         Args:
             tool_use_id: ID from the toolUse event
             result: Tool execution result (will be JSON serialized)
-            prompt_name: Prompt identifier
         """
         content = json.dumps(result) if not isinstance(result, str) else result
+        tool_result_content_name = str(uuid.uuid4())
+
+        # contentStart for tool result
         await self._send_event({
             "event": {
-                "toolResult": {
-                    "toolUseId": tool_use_id,
-                    "promptName": prompt_name,
-                    "content": [{"text": content}]
+                "contentStart": {
+                    "promptName": self.prompt_name,
+                    "contentName": tool_result_content_name,
+                    "type": "TOOL_RESULT",
+                    "interactive": True,
+                    "toolResultInputConfiguration": {
+                        "toolUseId": tool_use_id,
+                        "type": "TEXT",
+                        "textInputConfiguration": {
+                            "mediaType": "text/plain"
+                        }
+                    }
+                }
+            }
+        })
+
+        # textInput with tool result
+        await self._send_event({
+            "event": {
+                "textInput": {
+                    "promptName": self.prompt_name,
+                    "contentName": tool_result_content_name,
+                    "content": content
+                }
+            }
+        })
+
+        # contentEnd
+        await self._send_event({
+            "event": {
+                "contentEnd": {
+                    "promptName": self.prompt_name,
+                    "contentName": tool_result_content_name
                 }
             }
         })
         logger.debug(f"Sent toolResult for {tool_use_id}")
+
+    async def send_prompt_end(self) -> None:
+        """Send prompt end event."""
+        await self._send_event({
+            "event": {
+                "promptEnd": {
+                    "promptName": self.prompt_name
+                }
+            }
+        })
+        logger.debug("Sent promptEnd")
 
     async def send_session_end(self) -> None:
         """Send session end event for graceful shutdown."""
@@ -261,19 +338,33 @@ class NovaSonicClient:
             raise RuntimeError("Not connected. Call connect() first.")
 
         try:
-            while self.is_active:
-                output = await self.stream.await_output()
-                result = await output[1].receive()
+            from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamOutputChunk
 
-                if result.value and result.value.bytes_:
-                    response_data = result.value.bytes_.decode('utf-8')
-                    event = json.loads(response_data)
+            await self.stream.await_output()
+            output_stream = self.stream.output_stream
 
-                    # Log event type
-                    event_type = self._get_event_type(event)
-                    logger.debug(f"Received event: {event_type}")
+            if output_stream is None:
+                return
 
-                    yield event
+            async for out in output_stream:
+                if not isinstance(out, InvokeModelWithBidirectionalStreamOutputChunk):
+                    continue
+
+                payload = out.value.bytes_
+                if not payload:
+                    continue
+
+                event = json.loads(payload.decode('utf-8'))
+
+                # Log event type
+                event_type = self._get_event_type(event)
+                logger.debug(f"Received event: {event_type}")
+
+                yield event
+
+                # Check for completion
+                if "completionEnd" in event.get("event", {}):
+                    break
 
         except Exception as e:
             if self.is_active:
@@ -287,6 +378,12 @@ class NovaSonicClient:
                 await self.send_session_end()
             except Exception as e:
                 logger.warning(f"Error sending sessionEnd: {e}")
+
+        if self.stream:
+            try:
+                await self.stream.input_stream.close()
+            except Exception as e:
+                logger.warning(f"Error closing stream: {e}")
 
         self.is_active = False
         self.stream = None
@@ -303,9 +400,10 @@ class NovaSonicClient:
                 BidirectionalInputPayloadPart
             )
 
+            event_json = json.dumps(event)
             chunk = InvokeModelWithBidirectionalStreamInputChunk(
                 value=BidirectionalInputPayloadPart(
-                    bytes_=json.dumps(event).encode('utf-8')
+                    bytes_=event_json.encode('utf-8')
                 )
             )
             await self.stream.input_stream.send(chunk)
