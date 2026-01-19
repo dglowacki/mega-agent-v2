@@ -301,7 +301,21 @@ def slack_get_mentions(
         if not mentions:
             return "No recent mentions found"
 
-        return f"Found {len(mentions)} mentions"
+        # Format mentions with actual content
+        from datetime import datetime
+        result = f"Found {len(mentions)} mentions:\n\n"
+        for m in mentions:
+            channel_name = m.get('channel', {}).get('name', 'unknown')
+            user = m.get('user', m.get('username', 'unknown'))
+            text = m.get('text', '')
+            ts = m.get('ts', '')
+            if ts:
+                timestamp = datetime.fromtimestamp(float(ts)).strftime('%m/%d %H:%M')
+            else:
+                timestamp = ''
+            result += f"• [{timestamp}] #{channel_name} - @{user}: {text[:200]}{'...' if len(text) > 200 else ''}\n"
+
+        return result
 
     except Exception as e:
         return f"Error getting mentions: {str(e)}"

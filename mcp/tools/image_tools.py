@@ -13,25 +13,22 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_openai_client = None
 DEFAULT_OUTPUT_DIR = "/home/ec2-user/mega-agent2/generated_images"
 
 
 def _get_openai():
-    """Get OpenAI client."""
-    global _openai_client
-    if _openai_client is None:
-        try:
-            from openai import OpenAI
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                logger.error("OPENAI_API_KEY not set")
-                return None
-            _openai_client = OpenAI(api_key=api_key)
-        except Exception as e:
-            logger.error(f"Failed to init OpenAI: {e}")
+    """Get OpenAI client - creates new client each time to ensure fresh API key."""
+    try:
+        from openai import OpenAI
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY not set in environment")
             return None
-    return _openai_client
+        logger.info(f"Creating OpenAI client with key: {api_key[:20]}...")
+        return OpenAI(api_key=api_key)
+    except Exception as e:
+        logger.error(f"Failed to init OpenAI: {e}")
+        return None
 
 
 def image_generate(
@@ -61,14 +58,14 @@ def image_generate(
         output_path = Path(DEFAULT_OUTPUT_DIR)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Build API parameters
+        # Build API parameters for gpt-image-1.5
         params = {
             "model": "gpt-image-1.5",
             "prompt": prompt,
             "n": 1,
         }
 
-        # Add optional parameters
+        # Only add optional parameters if they have actual values (not "auto")
         if size and size != "auto":
             params["size"] = size
         if quality and quality != "auto":
@@ -80,7 +77,16 @@ def image_generate(
         logger.info(f"Generating image: {prompt[:50]}...")
         response = client.images.generate(**params)
 
+        # Debug logging
+        logger.info(f"Response type: {type(response)}")
+        logger.info(f"Response data: {response.data if hasattr(response, 'data') else 'no data attr'}")
+
+        if not response or not hasattr(response, 'data') or not response.data:
+            return f"Error: Empty response from image API. Response: {response}"
+
         image_data = response.data[0]
+        if not image_data:
+            return "Error: No image data in response"
 
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

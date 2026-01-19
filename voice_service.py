@@ -5,11 +5,15 @@ Voice Service - Flask app for the /av voice assistant endpoint.
 Provides:
 - Password-protected login with long-lasting cookie
 - Neo-brutal mobile-friendly interface
-- WebSocket proxy to voice gateway
-- Start/stop controls for voice agent
+- ElevenLabs widget integration with signed URLs
+- WebSocket proxy to voice gateway (legacy Grok support)
 
 Run:
     python voice_service.py [--port PORT] [--voice-port VOICE_PORT]
+
+Environment Variables:
+    ELEVENLABS_API_KEY - Required for signed URL generation
+    ELEVENLABS_AGENT_ID - Your ElevenLabs agent ID
 """
 
 import argparse
@@ -24,10 +28,11 @@ import subprocess
 import sys
 import threading
 import time
+import requests
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, request, redirect, url_for, make_response, render_template_string
+from flask import Flask, request, redirect, url_for, make_response, render_template_string, jsonify
 
 # Configuration
 PASSWORD = "TheVoiceYouWantToHearToday"
@@ -35,6 +40,10 @@ PASSWORD_HASH = hashlib.sha256(PASSWORD.encode()).hexdigest()
 COOKIE_NAME = "av_session"
 COOKIE_MAX_AGE = 365 * 24 * 60 * 60  # 1 year in seconds
 SECRET_KEY = os.getenv("AV_SECRET_KEY", secrets.token_hex(32))
+
+# ElevenLabs Configuration
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID", "agent_2601kf1fmbnseaxvp5kvc4zc21bz")
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -85,8 +94,8 @@ LOGIN_PAGE = '''
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background-color: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+            background-color: #0a0a0a;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -96,34 +105,50 @@ LOGIN_PAGE = '''
 
         .container {
             width: 100%;
-            max-width: 400px;
-            background-color: white;
-            border: 4px solid black;
+            max-width: 420px;
+            background-color: #141414;
+            border-radius: 16px;
+            border: 1px solid #2a2a2a;
+            overflow: hidden;
         }
 
         .header {
-            background-color: black;
-            color: white;
-            padding: 30px 20px;
+            padding: 40px 30px 30px;
             text-align: center;
         }
 
+        .logo {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+            fill: white;
+        }
+
         .header h1 {
-            font-size: 28px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+            font-size: 24px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 8px;
         }
 
         .header .subtitle {
             font-size: 14px;
             font-weight: 400;
-            margin-top: 8px;
-            opacity: 0.8;
+            color: #888;
         }
 
         .form-section {
-            padding: 30px 20px;
+            padding: 0 30px 30px;
         }
 
         .form-group {
@@ -133,75 +158,90 @@ LOGIN_PAGE = '''
         .form-group label {
             display: block;
             font-size: 14px;
-            font-weight: 800;
-            text-transform: uppercase;
-            margin-bottom: 10px;
+            font-weight: 500;
+            color: #888;
+            margin-bottom: 8px;
         }
 
         .form-group input {
             width: 100%;
-            padding: 15px;
-            font-size: 18px;
-            border: 3px solid black;
-            background-color: #f5f5f5;
+            padding: 14px 16px;
+            font-size: 16px;
+            border: 1px solid #2a2a2a;
+            border-radius: 10px;
+            background-color: #1a1a1a;
+            color: #fff;
             outline: none;
-            transition: background-color 0.2s;
+            transition: all 0.2s;
         }
 
         .form-group input:focus {
-            background-color: #FFEB3B;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
         }
 
         .form-group input::placeholder {
-            color: #888;
+            color: #555;
         }
 
         .submit-btn {
             width: 100%;
-            padding: 18px;
-            font-size: 18px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            background-color: black;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
             color: white;
             border: none;
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .submit-btn:hover {
-            background-color: #333;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
         }
 
         .submit-btn:active {
-            transform: translateY(2px);
+            transform: translateY(0);
         }
 
         .error-message {
-            background-color: #F44336;
-            color: white;
-            padding: 15px 20px;
-            font-weight: 700;
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: 12px 16px;
+            margin: 0 30px 20px;
+            border-radius: 10px;
+            font-size: 14px;
             text-align: center;
-            border-bottom: 3px solid black;
         }
 
         .footer {
-            padding: 15px 20px;
-            background-color: #f5f5f5;
-            border-top: 3px solid black;
+            padding: 20px 30px;
+            border-top: 1px solid #2a2a2a;
             text-align: center;
             font-size: 12px;
-            color: #666;
+            color: #555;
+        }
+
+        .footer a {
+            color: #6366f1;
+            text-decoration: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
+            <div class="logo">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2a1 1 0 0 0-2 0v2a9 9 0 0 0 8 8.94V22H8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2h-3v-1.06A9 9 0 0 0 21 12v-2a1 1 0 0 0-2 0z"/>
+                </svg>
+            </div>
             <h1>Voice Assistant</h1>
-            <div class="subtitle">Powered by Claude + Grok</div>
+            <div class="subtitle">Powered by Claude + ElevenLabs</div>
         </div>
 
         {% if error %}
@@ -213,18 +253,18 @@ LOGIN_PAGE = '''
         <div class="form-section">
             <form method="POST" action="/av/login">
                 <div class="form-group">
-                    <label for="password">Enter Password</label>
+                    <label for="password">Password</label>
                     <input
                         type="password"
                         id="password"
                         name="password"
-                        placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;"
+                        placeholder="Enter your password"
                         autocomplete="current-password"
                         autofocus
                         required
                     >
                 </div>
-                <button type="submit" class="submit-btn">Enter</button>
+                <button type="submit" class="submit-btn">Sign In</button>
             </form>
         </div>
 
@@ -238,10 +278,10 @@ LOGIN_PAGE = '''
 
 
 # =============================================================================
-# VOICE PAGE - Neo-Brutal Mobile-Friendly with Start/Stop
+# ELEVENLABS VOICE PAGE - Secure Widget Integration
 # =============================================================================
 
-VOICE_PAGE = '''
+ELEVENLABS_PAGE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -255,554 +295,251 @@ VOICE_PAGE = '''
             padding: 0;
         }
 
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background-color: #f5f5f5;
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+            background-color: #0a0a0a;
             display: flex;
             flex-direction: column;
         }
 
-        html {
-            height: -webkit-fill-available;
-        }
-
-        .header {
-            background-color: black;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-bottom: 4px solid black;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .main {
-            flex: 1;
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #0a0a0a;
             display: flex;
             flex-direction: column;
-            padding: 20px;
-            background-color: white;
-            border-left: 4px solid black;
-            border-right: 4px solid black;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
         }
 
-        .status-bar {
+        #loading-screen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+            border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 12px;
-            padding: 15px;
-            background-color: #f5f5f5;
-            border: 3px solid black;
-            margin-bottom: 20px;
+            animation: pulse-glow 2s ease-in-out infinite;
         }
 
-        .status-dot {
-            width: 16px;
-            height: 16px;
-            background-color: #888;
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.5); }
         }
 
-        .status-dot.ready {
-            background-color: #4CAF50;
+        .loading-logo svg {
+            width: 40px;
+            height: 40px;
+            fill: white;
         }
 
-        .status-dot.listening {
-            background-color: #2196F3;
-            animation: pulse 1s infinite;
+        .loading-text {
+            color: #888;
+            font-size: 14px;
+            font-weight: 500;
         }
 
-        .status-dot.thinking {
-            background-color: #FFEB3B;
-            animation: pulse 0.5s infinite;
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #333;
+            border-top: 2px solid #6366f1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-top: 16px;
         }
 
-        .status-dot.speaking {
-            background-color: #9C27B0;
-            animation: pulse 0.3s infinite;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        .status-dot.error {
-            background-color: #F44336;
+        .error-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #0a0a0a;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .error-screen.show {
+            display: flex;
         }
 
-        .status-text {
-            font-size: 16px;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-
-        .transcript-area {
-            background-color: #f5f5f5;
-            border: 3px solid black;
-            padding: 15px;
-            overflow-y: auto;
-            margin-bottom: 20px;
-            height: 300px;
-            max-height: 300px;
-        }
-
-        .message {
-            padding: 12px 15px;
-            margin-bottom: 12px;
-            border-left: 4px solid black;
-            background-color: white;
-        }
-
-        .message.user {
-            border-left-color: #2196F3;
-        }
-
-        .message.assistant {
-            border-left-color: #4CAF50;
-        }
-
-        .message-label {
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .message-text {
-            font-size: 16px;
-            line-height: 1.5;
-        }
-
-        .visualizer {
+        .error-icon {
+            width: 64px;
+            height: 64px;
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 2px solid rgba(239, 68, 68, 0.3);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 4px;
-            height: 50px;
             margin-bottom: 20px;
         }
 
-        .bar {
-            width: 6px;
-            height: 8px;
-            background-color: black;
-            transition: height 0.1s ease-out;
+        .error-icon svg {
+            width: 32px;
+            height: 32px;
+            fill: #ef4444;
         }
 
-        .bar.active {
-            background-color: #2196F3;
-        }
-
-        .control-area {
-            display: flex;
-            gap: 15px;
-        }
-
-        .control-btn {
-            flex: 1;
-            padding: 20px;
+        .error-title {
+            color: #fff;
             font-size: 18px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            border: 4px solid black;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .error-message {
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+            max-width: 300px;
+        }
+
+        .retry-btn {
+            margin-top: 24px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
         }
 
-        .control-btn:active {
-            transform: translateY(3px);
+        .retry-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
         }
 
-        .start-btn {
-            background-color: #4CAF50;
-            color: white;
+        #voice-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .start-btn:hover {
-            background-color: #45a049;
-        }
-
-        .start-btn:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-
-        .stop-btn {
-            background-color: #F44336;
-            color: white;
-        }
-
-        .stop-btn:hover {
-            background-color: #da190b;
-        }
-
-        .stop-btn:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-
-        .footer {
-            padding: 15px 20px;
-            background-color: black;
-            color: white;
-            text-align: center;
-            font-size: 12px;
-            border-top: 4px solid black;
-        }
-
-        .error-banner {
-            background-color: #F44336;
-            color: white;
-            padding: 15px;
-            text-align: center;
-            font-weight: 700;
-            display: none;
-        }
-
-        .error-banner.show {
-            display: block;
-        }
-
-        /* Mobile optimizations */
-        @media (max-width: 480px) {
-            .header h1 {
-                font-size: 20px;
-            }
-
-            .control-btn {
-                padding: 18px 15px;
-                font-size: 16px;
-            }
-
-            .message-text {
-                font-size: 15px;
-            }
+        elevenlabs-convai {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>VOICE ASSISTANT</h1>
+    <div id="loading-screen">
+        <div class="loading-logo">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2a1 1 0 0 0-2 0v2a9 9 0 0 0 8 8.94V22H8a1 1 0 0 0 0 2h8a1 1 0 0 0 0-2h-3v-1.06A9 9 0 0 0 21 12v-2a1 1 0 0 0-2 0z"/>
+            </svg>
+        </div>
+        <div class="loading-text" id="loadingText">Connecting...</div>
+        <div class="loading-spinner"></div>
     </div>
 
-    <div id="errorBanner" class="error-banner"></div>
-
-    <div class="main">
-        <div class="status-bar">
-            <div id="statusDot" class="status-dot"></div>
-            <span id="statusText" class="status-text">Disconnected</span>
+    <div id="error-screen" class="error-screen">
+        <div class="error-icon">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+            </svg>
         </div>
-
-        <div class="visualizer" id="visualizer"></div>
-
-        <div class="transcript-area" id="transcript">
-            <div class="message assistant">
-                <div class="message-label">Assistant</div>
-                <div class="message-text">Tap START to begin speaking with me.</div>
-            </div>
-        </div>
-
-        <div class="control-area">
-            <button id="startBtn" class="control-btn start-btn" disabled>Start</button>
-            <button id="stopBtn" class="control-btn stop-btn" disabled>Stop</button>
-        </div>
+        <div class="error-title">Connection Error</div>
+        <div class="error-message" id="errorMessage">Unable to connect to voice service.</div>
+        <button class="retry-btn" onclick="location.reload()">Try Again</button>
     </div>
 
-    <div class="footer">
-        Claude + Grok Voice &bull; Tap START to begin
-    </div>
+    <div id="voice-container"></div>
+
+    <script src="https://unpkg.com/@elevenlabs/convai-widget-embed@beta" async type="text/javascript"></script>
 
     <script>
-        // Configuration - Version 2
-        const WS_URL = '{{ ws_url }}';
-        const VERSION = 'v2.1';
-
-        // State
-        let ws = null;
-        let audioContext = null;
-        let mediaStream = null;
-        let processor = null;
-        let isReady = false;
-        let isListening = false;
-        let isProcessing = false;
-        let connectAttempts = 0;
-
-        // DOM elements
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const transcript = document.getElementById('transcript');
-        const errorBanner = document.getElementById('errorBanner');
-        const visualizer = document.getElementById('visualizer');
-
-        // Create visualizer bars
-        for (let i = 0; i < 24; i++) {
-            const bar = document.createElement('div');
-            bar.className = 'bar';
-            visualizer.appendChild(bar);
-        }
-        const bars = visualizer.querySelectorAll('.bar');
-
-        // Debug logging - shows in transcript
-        function log(msg) {
-            console.log('[Voice ' + VERSION + '] ' + msg);
-        }
-
-        function updateStatus(dotClass, text) {
-            statusDot.className = 'status-dot ' + dotClass;
-            statusText.textContent = text;
-        }
-
-        function updateButtons() {
-            startBtn.disabled = !isReady || isListening;
-            stopBtn.disabled = !isListening;
-        }
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingText = document.getElementById('loadingText');
+        const errorScreen = document.getElementById('error-screen');
+        const errorMessage = document.getElementById('errorMessage');
+        const voiceContainer = document.getElementById('voice-container');
 
         function showError(message) {
-            errorBanner.textContent = message;
-            errorBanner.classList.add('show');
-            setTimeout(function() { errorBanner.classList.remove('show'); }, 5000);
+            loadingScreen.classList.add('hidden');
+            errorMessage.textContent = message;
+            errorScreen.classList.add('show');
         }
 
-        function addMessage(role, text) {
-            const div = document.createElement('div');
-            div.className = 'message ' + role;
-            div.innerHTML = '<div class="message-label">' + (role === 'user' ? 'You' : 'Assistant') + '</div>' +
-                           '<div class="message-text">' + text.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
-            transcript.appendChild(div);
-            transcript.scrollTop = transcript.scrollHeight;
+        function hideLoading() {
+            loadingScreen.classList.add('hidden');
         }
 
-        // Simple WebSocket connection
-        function connect() {
-            connectAttempts++;
-            log('Connect attempt ' + connectAttempts + ' to ' + WS_URL);
-
-            if (ws) {
-                try { ws.close(); } catch(e) {}
-                ws = null;
-            }
-
-            updateStatus('', 'Connecting... (' + connectAttempts + ')');
-
+        async function initVoice() {
             try {
-                ws = new WebSocket(WS_URL);
-                log('WebSocket created');
-            } catch(e) {
-                log('WebSocket creation failed: ' + e.message);
-                showError('Connection failed: ' + e.message);
-                setTimeout(connect, 3000);
-                return;
-            }
+                loadingText.textContent = 'Authenticating...';
 
-            ws.onopen = function() {
-                log('WebSocket opened');
-                updateStatus('', 'Connected, waiting for voice...');
-            };
+                const response = await fetch('/av/signed-url', {
+                    credentials: 'include'
+                });
 
-            ws.onclose = function(e) {
-                log('WebSocket closed: code=' + e.code + ' reason=' + e.reason);
-                isReady = false;
-                updateStatus('', 'Disconnected (code: ' + e.code + ')');
-                updateButtons();
-                // Reconnect after 3 seconds
-                setTimeout(connect, 3000);
-            };
-
-            ws.onerror = function(e) {
-                log('WebSocket error event');
-            };
-
-            ws.onmessage = function(e) {
-                try {
-                    var msg = JSON.parse(e.data);
-                    handleMessage(msg);
-                } catch(err) {
-                    log('Parse error: ' + err);
-                }
-            };
-        }
-
-        function handleMessage(msg) {
-            log('Received: ' + msg.type);
-            if (msg.type === 'grok_ready') {
-                log('Voice API ready!');
-                connectAttempts = 0;
-                isReady = true;
-                updateStatus('ready', 'Ready');
-                updateButtons();
-            }
-            else if (msg.type === 'transcription') {
-                addMessage('user', msg.text);
-                isProcessing = true;
-                updateStatus('thinking', 'Processing...');
-            }
-            else if (msg.type === 'response') {
-                addMessage('assistant', msg.text);
-                isProcessing = false;
-                updateStatus(isListening ? 'listening' : 'ready', isListening ? 'Listening' : 'Ready');
-            }
-            else if (msg.type === 'thinking') {
-                if (msg.active) {
-                    isProcessing = true;
-                    updateStatus('thinking', 'Processing...');
-                } else {
-                    isProcessing = false;
-                    updateStatus(isListening ? 'listening' : 'ready', isListening ? 'Listening' : 'Ready');
-                }
-            }
-            else if (msg.type === 'audio') {
-                playAudio(msg.data);
-            }
-            else if (msg.type === 'pong') {
-                // Keepalive response
-            }
-            else if (msg.type === 'error') {
-                showError(msg.message || 'Server error');
-            }
-        }
-
-        // Audio playback
-        function playAudio(base64Data) {
-            try {
-                var binaryString = atob(base64Data);
-                var bytes = new Uint8Array(binaryString.length);
-                for (var i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Authentication failed');
                 }
 
-                var int16 = new Int16Array(bytes.buffer);
-                var float32 = new Float32Array(int16.length);
-                for (var i = 0; i < int16.length; i++) {
-                    float32[i] = int16[i] / 32768;
+                const data = await response.json();
+                const signedUrl = data.signed_url;
+
+                if (!signedUrl) {
+                    throw new Error('No signed URL received');
                 }
 
-                if (!audioContext) {
-                    audioContext = new AudioContext({ sampleRate: 24000 });
-                }
+                loadingText.textContent = 'Starting voice assistant...';
 
-                var audioBuffer = audioContext.createBuffer(1, float32.length, 24000);
-                audioBuffer.copyToChannel(float32, 0);
+                voiceContainer.innerHTML = '<elevenlabs-convai signed-url="' + signedUrl + '" variant="expanded"></elevenlabs-convai>';
 
-                var source = audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
-                source.start();
+                setTimeout(hideLoading, 1500);
+
             } catch (err) {
-                console.log('Audio error:', err);
+                console.error('Voice init error:', err);
+                showError(err.message);
             }
         }
 
-        // Start listening
-        function startListening() {
-            if (!isReady || isListening) return;
-
-            navigator.mediaDevices.getUserMedia({
-                audio: { channelCount: 1, sampleRate: 24000, echoCancellation: true, noiseSuppression: true }
-            }).then(function(stream) {
-                mediaStream = stream;
-
-                if (!audioContext) {
-                    audioContext = new AudioContext({ sampleRate: 24000 });
-                }
-
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume();
-                }
-
-                var source = audioContext.createMediaStreamSource(stream);
-                processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-                processor.onaudioprocess = function(e) {
-                    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-                    if (!isListening) return;
-
-                    var pcmFloat = e.inputBuffer.getChannelData(0);
-                    var int16 = new Int16Array(pcmFloat.length);
-
-                    for (var i = 0; i < pcmFloat.length; i++) {
-                        var s = Math.max(-1, Math.min(1, pcmFloat[i]));
-                        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                    }
-
-                    // Update visualizer
-                    var step = Math.floor(pcmFloat.length / bars.length);
-                    for (var i = 0; i < bars.length; i++) {
-                        var value = Math.abs(pcmFloat[i * step]) * 150;
-                        bars[i].style.height = Math.max(8, Math.min(50, value)) + 'px';
-                    }
-
-                    // Send audio
-                    try {
-                        var base64 = btoa(String.fromCharCode.apply(null, new Uint8Array(int16.buffer)));
-                        ws.send(JSON.stringify({ type: 'audio', data: base64 }));
-                    } catch(err) {
-                        console.log('Send error:', err);
-                    }
-                };
-
-                source.connect(processor);
-                processor.connect(audioContext.destination);
-
-                isListening = true;
-                updateStatus('listening', 'Listening');
-                updateButtons();
-                bars.forEach(function(bar) { bar.classList.add('active'); });
-
-            }).catch(function(err) {
-                console.log('Mic error:', err);
-                showError('Microphone access denied');
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(initVoice, 300);
             });
+        } else {
+            setTimeout(initVoice, 300);
         }
-
-        // Stop listening
-        function stopListening() {
-            if (processor) {
-                try { processor.disconnect(); } catch(e) {}
-                processor = null;
-            }
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(function(track) { track.stop(); });
-                mediaStream = null;
-            }
-
-            isListening = false;
-            bars.forEach(function(bar) {
-                bar.style.height = '8px';
-                bar.classList.remove('active');
-            });
-
-            if (isReady) {
-                updateStatus('ready', 'Ready');
-            }
-            updateButtons();
-        }
-
-        // Event listeners
-        startBtn.addEventListener('click', startListening);
-        stopBtn.addEventListener('click', stopListening);
-
-        // Send periodic ping to keep connection alive
-        setInterval(function() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 30000);
-
-        // Start
-        console.log('Voice Agent starting, WS_URL:', WS_URL);
-        connect();
     </script>
 </body>
 </html>
@@ -819,7 +556,7 @@ def index():
     """Main entry - redirect to voice page if authenticated, else login."""
     token = request.cookies.get(COOKIE_NAME)
     if verify_session(token):
-        return redirect(url_for('voice'))
+        return redirect(url_for('voice_eleven'))
     return redirect(url_for('login'))
 
 
@@ -838,7 +575,7 @@ def login():
             valid_sessions.add(token)
 
             # Create response with cookie
-            response = make_response(redirect(url_for('voice')))
+            response = make_response(redirect(url_for('voice_eleven')))
             response.set_cookie(
                 COOKIE_NAME,
                 token,
@@ -854,30 +591,58 @@ def login():
     return render_template_string(LOGIN_PAGE, error=error)
 
 
-@app.route('/av/voice')
+@app.route('/av/eleven')
 @require_auth
-def voice():
-    """Voice assistant page."""
-    # Check if behind proxy (nginx)
-    forwarded_host = request.headers.get('X-Forwarded-Host') or request.headers.get('Host')
-    forwarded_proto = request.headers.get('X-Forwarded-Proto', 'http')
-
-    # Determine the actual host (prefer forwarded headers from nginx)
-    if forwarded_host and '127.0.0.1' not in forwarded_host and 'localhost' not in forwarded_host:
-        # Behind nginx proxy - use the forwarded host
-        ws_protocol = 'wss' if forwarded_proto == 'https' else 'ws'
-        ws_url = f'{ws_protocol}://{forwarded_host}/av/ws'
-    else:
-        # Direct access (local development)
-        host = request.host.split(':')[0]
-        ws_url = f'ws://{host}:8765'
-
-    response = make_response(render_template_string(VOICE_PAGE, ws_url=ws_url))
-    # Prevent caching to ensure latest JavaScript is loaded
+def voice_eleven():
+    """ElevenLabs voice assistant page with secure widget."""
+    response = make_response(render_template_string(ELEVENLABS_PAGE))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+
+@app.route('/av/signed-url')
+@require_auth
+def get_signed_url():
+    """
+    Get a signed URL for ElevenLabs conversation.
+
+    Requires authentication. Returns a 15-minute signed URL that the
+    client uses to establish a secure connection to ElevenLabs.
+    """
+    if not ELEVENLABS_API_KEY:
+        return jsonify({
+            'error': 'ElevenLabs API key not configured. Set ELEVENLABS_API_KEY environment variable.'
+        }), 500
+
+    if not ELEVENLABS_AGENT_ID:
+        return jsonify({
+            'error': 'ElevenLabs Agent ID not configured. Set ELEVENLABS_AGENT_ID environment variable.'
+        }), 500
+
+    try:
+        # Request signed URL from ElevenLabs API
+        response = requests.get(
+            f'https://api.elevenlabs.io/v1/convai/conversation/get-signed-url',
+            params={'agent_id': ELEVENLABS_AGENT_ID},
+            headers={'xi-api-key': ELEVENLABS_API_KEY},
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            error_msg = response.json().get('detail', {}).get('message', 'Unknown error')
+            return jsonify({'error': f'ElevenLabs API error: {error_msg}'}), response.status_code
+
+        data = response.json()
+        return jsonify({'signed_url': data.get('signed_url')})
+
+    except requests.exceptions.Timeout:
+        return jsonify({'error': 'Timeout connecting to ElevenLabs API'}), 504
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Failed to connect to ElevenLabs: {str(e)}'}), 502
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
 
 
 @app.route('/av/logout')
@@ -896,6 +661,50 @@ def logout():
 def health():
     """Health check endpoint."""
     return {'status': 'ok', 'timestamp': datetime.utcnow().isoformat()}
+
+
+@app.route('/av/test-ws')
+def test_ws():
+    """Test page for WebSocket connection debugging."""
+    return '''<!DOCTYPE html>
+<html>
+<head><title>WS Test</title></head>
+<body>
+<h1>WebSocket Test</h1>
+<pre id="log"></pre>
+<script>
+var log = document.getElementById('log');
+function l(msg) { log.textContent += new Date().toISOString() + ': ' + msg + '\\n'; }
+
+l('Starting test...');
+l('Creating WebSocket to wss://' + location.host + '/av/ws');
+
+var ws = new WebSocket('wss://' + location.host + '/av/ws');
+
+ws.onopen = function() { l('CONNECTED!'); };
+ws.onclose = function(e) { l('CLOSED: code=' + e.code + ' reason=' + e.reason); };
+ws.onerror = function(e) { l('ERROR: ' + JSON.stringify(e)); };
+ws.onmessage = function(e) {
+    try {
+        var data = JSON.parse(e.data);
+        l('MESSAGE: ' + data.type);
+        if (data.type === 'grok_ready') {
+            l('SUCCESS! Voice API is ready.');
+        }
+    } catch(err) {
+        l('PARSE ERROR: ' + err);
+    }
+};
+
+setTimeout(function() {
+    if (ws.readyState !== WebSocket.OPEN) {
+        l('TIMEOUT - WebSocket did not connect in 10s');
+        l('readyState=' + ws.readyState + ' (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)');
+    }
+}, 10000);
+</script>
+</body>
+</html>'''
 
 
 @app.route('/av/status')

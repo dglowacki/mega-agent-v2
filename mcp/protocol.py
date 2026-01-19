@@ -13,11 +13,15 @@ import json
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 from enum import Enum
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Config file for exposed tools
+EXPOSED_TOOLS_CONFIG = Path("/home/ec2-user/mega-agent2/data/exposed_tools.json")
 
 
 class MCPError(Exception):
@@ -137,6 +141,7 @@ class MCPServer:
         self._tools: Dict[str, ToolDefinition] = {}
         self._prompts: Dict[str, PromptDefinition] = {}
         self._resources: Dict[str, ResourceDefinition] = {}
+        self._exposed_tools: Optional[Set[str]] = self._load_exposed_tools()
 
         self._message_handlers: Dict[str, Callable] = {
             "initialize": self._handle_initialize,
@@ -152,6 +157,21 @@ class MCPServer:
 
         self._initialized = False
         self._client_info: Dict[str, Any] = {}
+
+    def _load_exposed_tools(self) -> Optional[Set[str]]:
+        """Load exposed tools from config. Returns None to expose all tools."""
+        if not EXPOSED_TOOLS_CONFIG.exists():
+            return None
+        try:
+            with open(EXPOSED_TOOLS_CONFIG) as f:
+                data = json.load(f)
+            tools = data.get("tools")
+            if tools is None:
+                return None
+            return set(tools)
+        except Exception as e:
+            logger.warning(f"Failed to load exposed_tools.json: {e}")
+            return None
 
     def register_tool(
         self,
@@ -280,9 +300,12 @@ class MCPServer:
         return None
 
     async def _handle_tools_list(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle tools/list request."""
+        """Handle tools/list request. Filters to exposed_tools.json if present."""
         tools = []
         for tool in self._tools.values():
+            # Filter by exposed_tools config if set
+            if self._exposed_tools is not None and tool.name not in self._exposed_tools:
+                continue
             tools.append({
                 "name": tool.name,
                 "description": tool.description,

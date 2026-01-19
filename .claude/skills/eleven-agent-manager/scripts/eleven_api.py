@@ -142,6 +142,38 @@ def get_transcript(conversation_id: str):
     }
 
 
+def update_timeouts(turn_timeout: float = None, max_duration: int = None, 
+                    cascade_timeout: float = None):
+    """Update conversation timeout settings."""
+    url = f"{BASE_URL}/agents/{AGENT_ID}"
+    
+    payload = {"conversation_config": {}}
+    
+    if turn_timeout is not None:
+        if "turn" not in payload["conversation_config"]:
+            payload["conversation_config"]["turn"] = {}
+        payload["conversation_config"]["turn"]["turn_timeout"] = turn_timeout
+    
+    if max_duration is not None:
+        if "conversation" not in payload["conversation_config"]:
+            payload["conversation_config"]["conversation"] = {}
+        payload["conversation_config"]["conversation"]["max_duration_seconds"] = max_duration
+    
+    if cascade_timeout is not None:
+        if "agent" not in payload["conversation_config"]:
+            payload["conversation_config"]["agent"] = {}
+        if "prompt" not in payload["conversation_config"]["agent"]:
+            payload["conversation_config"]["agent"]["prompt"] = {}
+        payload["conversation_config"]["agent"]["prompt"]["cascade_timeout_seconds"] = cascade_timeout
+    
+    if not payload["conversation_config"]:
+        return {"error": "No timeout settings provided"}
+    
+    response = requests.patch(url, headers=get_headers(), json=payload)
+    response.raise_for_status()
+    return {"status": "success", "message": "Timeout settings updated", "settings": payload}
+
+
 def main():
     parser = argparse.ArgumentParser(description="ElevenLabs Agent Management")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
@@ -170,6 +202,12 @@ def main():
     # transcript
     trans_parser = subparsers.add_parser("transcript", help="Get conversation transcript")
     trans_parser.add_argument("conversation_id", help="Conversation ID")
+
+    # update-timeouts
+    timeout_parser = subparsers.add_parser("update-timeouts", help="Update timeout settings")
+    timeout_parser.add_argument("--turn-timeout", type=float, help="Turn timeout in seconds")
+    timeout_parser.add_argument("--max-duration", type=int, help="Max conversation duration in seconds")
+    timeout_parser.add_argument("--cascade-timeout", type=float, help="Cascade timeout in seconds")
 
     args = parser.parse_args()
 
@@ -222,6 +260,14 @@ def main():
             print("\nTranscript:")
             for entry in result["transcript"]:
                 print(f"  [{entry['role']}]: {entry['message'][:200]}")
+
+        elif args.command == "update-timeouts":
+            result = update_timeouts(
+                turn_timeout=args.turn_timeout,
+                max_duration=args.max_duration,
+                cascade_timeout=args.cascade_timeout
+            )
+            print(json.dumps(result, indent=2))
 
         else:
             parser.print_help()

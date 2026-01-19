@@ -1,5 +1,5 @@
 """
-MCP Tools - 106+ tools across multiple categories.
+MCP Tools - 110+ tools across multiple categories.
 
 Categories:
 - file: read, write, edit, glob, grep
@@ -7,7 +7,7 @@ Categories:
 - git: status, diff, commit, push, log
 - github: PRs, issues, reviews
 - web: search, fetch
-- aws: lambda, s3, costs
+- aws: lambda, s3, cdk
 - comms: email, calendar
 - session: approval mode control
 - slack: messages, channels, users
@@ -18,6 +18,12 @@ Categories:
 - appstore: apps, sales, downloads
 - image: generate, icon, banner
 - skill: create, edit, validate, activate
+- voice: time, weather, capabilities, meta-tools, discovery
+
+Voice Tier System:
+- Tier 1: ~35 direct tools (daily use)
+- Tier 2: 6 meta-tools (category gateways)
+- Tier 3: 3 discovery tools (search/schema/execute)
 """
 
 from .file_tools import register_file_tools
@@ -36,6 +42,9 @@ from .wordpress_tools import register_wordpress_tools
 from .appstore_tools import register_appstore_tools
 from .image_tools import register_image_tools
 from .skill_tools import register_skill_tools
+
+# Voice tools
+from mcp.voice import register_voice_tools
 
 
 def register_all_tools(server, security_manager=None, session_id: str = "default"):
@@ -67,6 +76,8 @@ def register_all_tools(server, security_manager=None, session_id: str = "default
     count += register_image_tools(server)
     count += register_skill_tools(server)
     count += register_session_tools(server, security_manager, session_id)
+    # Voice tools (basics, meta-tools, discovery)
+    count += register_voice_tools(server)
     return count
 
 
