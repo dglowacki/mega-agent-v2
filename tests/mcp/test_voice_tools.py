@@ -36,7 +36,7 @@ class TestVoiceModuleImports:
             get_tier_for_tool, get_all_exposed_tools
         )
         assert len(TIER_1_TOOLS) >= 35
-        assert len(TIER_2_META_TOOLS) == 6
+        assert len(TIER_2_META_TOOLS) == 8
         assert len(TIER_3_DISCOVERY) == 3
 
     def test_import_tools(self):
@@ -72,7 +72,6 @@ class TestTierConfig:
             "github_pr_list", "github_issue_list",
             "slack_send_dm", "slack_get_unread",
             "gmail_list", "gmail_send",
-            "linear_list_issues", "linear_create_issue",
             "clickup_list_tasks", "clickup_create_task",
             "tasks_list", "tasks_create",
         ]
@@ -82,7 +81,7 @@ class TestTierConfig:
     def test_tier2_meta_tools_structure(self):
         from mcp.voice.tier_config import TIER_2_META_TOOLS
 
-        expected_meta = ["aws_ops", "github_ops", "content_ops", "image_ops", "email_ops", "skill_ops"]
+        expected_meta = ["aws_ops", "github_ops", "content_ops", "image_ops", "email_ops", "skill_ops", "linear_ops", "browser_ops"]
         for meta in expected_meta:
             assert meta in TIER_2_META_TOOLS
             assert "description" in TIER_2_META_TOOLS[meta]
@@ -292,13 +291,15 @@ class TestToolRegistration:
         server = MCPServer()
         count = register_meta_tools(server)
 
-        assert count == 6
+        assert count == 8
         assert "aws_ops" in server._tools
         assert "github_ops" in server._tools
         assert "content_ops" in server._tools
         assert "image_ops" in server._tools
         assert "email_ops" in server._tools
         assert "skill_ops" in server._tools
+        assert "linear_ops" in server._tools
+        assert "browser_ops" in server._tools
 
     def test_register_discovery_tools(self):
         from mcp.protocol import MCPServer
@@ -319,7 +320,7 @@ class TestToolRegistration:
         server = MCPServer()
         count = register_voice_tools(server)
 
-        assert count == 12  # 3 basic + 6 meta + 3 discovery
+        assert count == 14  # 3 basic + 8 meta + 3 discovery
 
     def test_full_registration_includes_voice(self):
         from mcp.protocol import MCPServer

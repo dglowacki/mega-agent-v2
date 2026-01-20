@@ -18,11 +18,12 @@ Categories:
 - appstore: apps, sales, downloads
 - image: generate, icon, banner
 - skill: create, edit, validate, activate
+- browser: navigation, interactions, screenshots, automation
 - voice: time, weather, capabilities, meta-tools, discovery
 
 Voice Tier System:
 - Tier 1: ~35 direct tools (daily use)
-- Tier 2: 6 meta-tools (category gateways)
+- Tier 2: 8 meta-tools (category gateways)
 - Tier 3: 3 discovery tools (search/schema/execute)
 """
 
@@ -42,6 +43,7 @@ from .wordpress_tools import register_wordpress_tools
 from .appstore_tools import register_appstore_tools
 from .image_tools import register_image_tools
 from .skill_tools import register_skill_tools
+from .browser_tools import register_browser_tools
 
 # Voice tools
 from mcp.voice import register_voice_tools
@@ -75,6 +77,7 @@ def register_all_tools(server, security_manager=None, session_id: str = "default
     count += register_appstore_tools(server)
     count += register_image_tools(server)
     count += register_skill_tools(server)
+    count += register_browser_tools(server)
     count += register_session_tools(server, security_manager, session_id)
     # Voice tools (basics, meta-tools, discovery)
     count += register_voice_tools(server)
@@ -98,5 +101,6 @@ __all__ = [
     "register_appstore_tools",
     "register_image_tools",
     "register_skill_tools",
+    "register_browser_tools",
     "register_session_tools"
 ]

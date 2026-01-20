@@ -8,6 +8,8 @@ Category gateway tools that wrap multiple internal tools:
 - image_ops: Generate, edit, icons
 - email_ops: Advanced Gmail operations
 - skill_ops: Advanced skill operations
+- linear_ops: Issues, projects, teams, cycles, labels
+- browser_ops: Navigation, interactions, screenshots, automation
 """
 
 import logging
@@ -321,6 +323,213 @@ def skill_ops(
         return {"error": str(e)}
 
 
+def linear_ops(
+    action: str,
+    format: str = "voice",
+    **kwargs
+) -> dict:
+    """
+    Linear operations gateway.
+
+    Actions:
+    - list_issues: List issues with filters
+    - create_issue: Create new issue
+    - get_issue: Get issue details
+    - update_issue: Update issue
+    - delete_issue: Delete/archive issue
+    - search_issues: Search issues by text
+    - list_teams: List all teams
+    - get_team: Get team with states/labels
+    - list_projects: List projects
+    - get_project: Get project details
+    - create_project: Create project
+    - list_cycles: List cycles
+    - get_active_cycle: Get current cycle
+    - create_cycle: Create cycle
+    - list_labels: List labels
+    - create_label: Create label
+    - add_comment: Add comment to issue
+    - list_users: List users
+    - get_viewer: Get authenticated user
+    - get_workflow_states: Get workflow states
+    - get_organization: Get org info
+
+    Args:
+        action: Action to perform
+        format: "voice" or "standard"
+        **kwargs: Action-specific arguments
+    """
+    from mcp.tools.linear_tools import (
+        linear_list_issues, linear_create_issue, linear_get_issue,
+        linear_update_issue, linear_delete_issue, linear_search_issues,
+        linear_list_teams, linear_get_team,
+        linear_list_projects, linear_get_project, linear_create_project,
+        linear_list_cycles, linear_get_active_cycle, linear_create_cycle,
+        linear_list_labels, linear_create_label,
+        linear_add_comment,
+        linear_list_users, linear_get_viewer,
+        linear_get_workflow_states, linear_get_organization,
+    )
+
+    action_map = {
+        "list_issues": linear_list_issues,
+        "create_issue": linear_create_issue,
+        "get_issue": linear_get_issue,
+        "update_issue": linear_update_issue,
+        "delete_issue": linear_delete_issue,
+        "search_issues": linear_search_issues,
+        "list_teams": linear_list_teams,
+        "get_team": linear_get_team,
+        "list_projects": linear_list_projects,
+        "get_project": linear_get_project,
+        "create_project": linear_create_project,
+        "list_cycles": linear_list_cycles,
+        "get_active_cycle": linear_get_active_cycle,
+        "create_cycle": linear_create_cycle,
+        "list_labels": linear_list_labels,
+        "create_label": linear_create_label,
+        "add_comment": linear_add_comment,
+        "list_users": linear_list_users,
+        "get_viewer": linear_get_viewer,
+        "get_workflow_states": linear_get_workflow_states,
+        "get_organization": linear_get_organization,
+    }
+
+    if action not in action_map:
+        return {
+            "error": f"Unknown action '{action}'",
+            "available_actions": list(action_map.keys())
+        }
+
+    try:
+        result = action_map[action](**kwargs)
+        return _format_result(result, format, f"linear_{action}")
+    except TypeError as e:
+        return {"error": f"Invalid arguments for {action}: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Linear ops error: {e}")
+        return {"error": str(e)}
+
+
+def browser_ops(
+    action: str,
+    format: str = "voice",
+    **kwargs
+) -> dict:
+    """
+    Browser automation gateway.
+
+    Actions:
+    - open: Navigate to URL
+    - back: Go back in history
+    - forward: Go forward in history
+    - reload: Reload page
+    - close: Close browser
+    - snapshot: Get page elements with refs
+    - click: Click element by ref
+    - fill: Clear and type into input
+    - type: Type without clearing
+    - press: Press key/combination
+    - hover: Hover over element
+    - scroll: Scroll page
+    - get_text: Get element text
+    - get_html: Get element innerHTML
+    - get_value: Get input value
+    - get_title: Get page title
+    - get_url: Get current URL
+    - screenshot: Take screenshot
+    - pdf: Save as PDF
+    - wait: Wait for condition
+    - is_visible: Check visibility
+    - is_enabled: Check enabled state
+    - is_checked: Check checkbox state
+    - eval: Execute JavaScript
+    - cookies_get: Get cookies
+    - cookies_set: Set cookie
+    - cookies_clear: Clear cookies
+    - set_viewport: Set viewport size
+    - set_device: Emulate device
+    - tab_list: List tabs
+    - tab_new: Open new tab
+    - tab_switch: Switch to tab
+    - tab_close: Close tab
+
+    Args:
+        action: Action to perform
+        format: "voice" or "standard"
+        **kwargs: Action-specific arguments
+    """
+    from mcp.tools.browser_tools import (
+        browser_open, browser_back, browser_forward, browser_reload, browser_close,
+        browser_snapshot, browser_click, browser_fill, browser_type, browser_press,
+        browser_hover, browser_check, browser_uncheck, browser_select,
+        browser_scroll, browser_scroll_into_view,
+        browser_get_text, browser_get_html, browser_get_value, browser_get_attribute,
+        browser_get_title, browser_get_url,
+        browser_screenshot, browser_pdf, browser_wait,
+        browser_is_visible, browser_is_enabled, browser_is_checked,
+        browser_eval, browser_cookies_get, browser_cookies_set, browser_cookies_clear,
+        browser_set_viewport, browser_set_device,
+        browser_tab_list, browser_tab_new, browser_tab_switch, browser_tab_close,
+    )
+
+    action_map = {
+        "open": browser_open,
+        "back": browser_back,
+        "forward": browser_forward,
+        "reload": browser_reload,
+        "close": browser_close,
+        "snapshot": browser_snapshot,
+        "click": browser_click,
+        "fill": browser_fill,
+        "type": browser_type,
+        "press": browser_press,
+        "hover": browser_hover,
+        "check": browser_check,
+        "uncheck": browser_uncheck,
+        "select": browser_select,
+        "scroll": browser_scroll,
+        "scroll_into_view": browser_scroll_into_view,
+        "get_text": browser_get_text,
+        "get_html": browser_get_html,
+        "get_value": browser_get_value,
+        "get_attribute": browser_get_attribute,
+        "get_title": browser_get_title,
+        "get_url": browser_get_url,
+        "screenshot": browser_screenshot,
+        "pdf": browser_pdf,
+        "wait": browser_wait,
+        "is_visible": browser_is_visible,
+        "is_enabled": browser_is_enabled,
+        "is_checked": browser_is_checked,
+        "eval": browser_eval,
+        "cookies_get": browser_cookies_get,
+        "cookies_set": browser_cookies_set,
+        "cookies_clear": browser_cookies_clear,
+        "set_viewport": browser_set_viewport,
+        "set_device": browser_set_device,
+        "tab_list": browser_tab_list,
+        "tab_new": browser_tab_new,
+        "tab_switch": browser_tab_switch,
+        "tab_close": browser_tab_close,
+    }
+
+    if action not in action_map:
+        return {
+            "error": f"Unknown action '{action}'",
+            "available_actions": list(action_map.keys())
+        }
+
+    try:
+        result = action_map[action](**kwargs)
+        return _format_result(result, format, f"browser_{action}")
+    except TypeError as e:
+        return {"error": f"Invalid arguments for {action}: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Browser ops error: {e}")
+        return {"error": str(e)}
+
+
 def _format_result(result: Any, format: str, tool_name: str) -> Any:
     """Format result based on mode."""
     if format != "voice":
@@ -481,4 +690,74 @@ def register_meta_tools(server) -> int:
         category="skills"
     )
 
-    return 6
+    server.register_tool(
+        name="linear_ops",
+        description="Linear operations: issues, projects, teams, cycles, labels, comments, users, workflow states",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "list_issues", "create_issue", "get_issue", "update_issue", "delete_issue", "search_issues",
+                        "list_teams", "get_team", "list_projects", "get_project", "create_project",
+                        "list_cycles", "get_active_cycle", "create_cycle",
+                        "list_labels", "create_label", "add_comment",
+                        "list_users", "get_viewer", "get_workflow_states", "get_organization"
+                    ],
+                    "description": "Action to perform"
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["voice", "standard"],
+                    "default": "voice"
+                }
+            },
+            "required": ["action"]
+        },
+        handler=linear_ops,
+        requires_approval=False,
+        category="linear"
+    )
+
+    server.register_tool(
+        name="browser_ops",
+        description="Browser automation: navigate, interact, screenshot, test web pages",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "open", "back", "forward", "reload", "close",
+                        "snapshot", "click", "fill", "type", "press", "hover",
+                        "check", "uncheck", "select", "scroll", "scroll_into_view",
+                        "get_text", "get_html", "get_value", "get_attribute", "get_title", "get_url",
+                        "screenshot", "pdf", "wait",
+                        "is_visible", "is_enabled", "is_checked",
+                        "eval", "cookies_get", "cookies_set", "cookies_clear",
+                        "set_viewport", "set_device",
+                        "tab_list", "tab_new", "tab_switch", "tab_close"
+                    ],
+                    "description": "Browser action to perform"
+                },
+                "url": {"type": "string", "description": "URL for open action"},
+                "ref": {"type": "string", "description": "Element ref (e.g., @e1) for interactions"},
+                "text": {"type": "string", "description": "Text for fill/type actions"},
+                "key": {"type": "string", "description": "Key for press action"},
+                "script": {"type": "string", "description": "JavaScript for eval action"},
+                "path": {"type": "string", "description": "File path for screenshot/pdf"},
+                "format": {
+                    "type": "string",
+                    "enum": ["voice", "standard"],
+                    "default": "voice"
+                }
+            },
+            "required": ["action"]
+        },
+        handler=browser_ops,
+        requires_approval=False,
+        category="browser"
+    )
+
+    return 8

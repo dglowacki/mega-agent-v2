@@ -64,11 +64,6 @@ TIER_1_TOOLS = {
     "gcal_list_events",
     "gcal_create_event",
 
-    # Linear
-    "linear_list_issues",
-    "linear_create_issue",
-    "linear_get_issue",
-
     # ClickUp
     "clickup_list_tasks",
     "clickup_create_task",
@@ -135,6 +130,52 @@ TIER_2_META_TOOLS = {
         "internal_tools": [
             "skill_marketplace_search", "skill_marketplace_install", "skill_marketplace_info",
             "skill_add_script", "skill_add_reference", "skill_view", "skill_delete",
+        ]
+    },
+    "linear_ops": {
+        "description": "Linear operations: issues, projects, teams, cycles, labels, comments, users",
+        "actions": [
+            "list_issues", "create_issue", "get_issue", "update_issue", "delete_issue", "search_issues",
+            "list_teams", "get_team", "list_projects", "get_project", "create_project",
+            "list_cycles", "get_active_cycle", "create_cycle",
+            "list_labels", "create_label", "add_comment",
+            "list_users", "get_viewer", "get_workflow_states", "get_organization"
+        ],
+        "internal_tools": [
+            "linear_list_issues", "linear_create_issue", "linear_get_issue",
+            "linear_update_issue", "linear_delete_issue", "linear_search_issues",
+            "linear_list_teams", "linear_get_team",
+            "linear_list_projects", "linear_get_project", "linear_create_project",
+            "linear_list_cycles", "linear_get_active_cycle", "linear_create_cycle",
+            "linear_list_labels", "linear_create_label",
+            "linear_add_comment",
+            "linear_list_users", "linear_get_viewer",
+            "linear_get_workflow_states", "linear_get_organization",
+        ]
+    },
+    "browser_ops": {
+        "description": "Browser automation: navigation, interactions, screenshots, testing",
+        "actions": [
+            "open", "back", "forward", "reload", "close",
+            "snapshot", "click", "fill", "type", "press", "hover", "scroll",
+            "get_text", "get_html", "get_value", "get_attribute", "get_title", "get_url",
+            "screenshot", "pdf", "wait",
+            "is_visible", "is_enabled", "is_checked",
+            "eval", "cookies", "set_viewport", "set_device",
+            "tab_list", "tab_new", "tab_switch", "tab_close"
+        ],
+        "internal_tools": [
+            "browser_open", "browser_back", "browser_forward", "browser_reload", "browser_close",
+            "browser_snapshot", "browser_click", "browser_fill", "browser_type", "browser_press",
+            "browser_hover", "browser_check", "browser_uncheck", "browser_select",
+            "browser_scroll", "browser_scroll_into_view",
+            "browser_get_text", "browser_get_html", "browser_get_value", "browser_get_attribute",
+            "browser_get_title", "browser_get_url",
+            "browser_screenshot", "browser_pdf", "browser_wait",
+            "browser_is_visible", "browser_is_enabled", "browser_is_checked",
+            "browser_eval", "browser_cookies_get", "browser_cookies_set", "browser_cookies_clear",
+            "browser_set_viewport", "browser_set_device",
+            "browser_tab_list", "browser_tab_new", "browser_tab_switch", "browser_tab_close",
         ]
     },
 }
