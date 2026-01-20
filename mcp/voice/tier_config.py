@@ -17,9 +17,15 @@ TIER_1_TOOLS = {
     "list_capabilities",
 
     # App Store
+    "appstore_list_apps",
     "appstore_sales",
     "appstore_downloads",
     "appstore_ratings",
+
+    # TestFlight (high-frequency)
+    "testflight_list_builds",
+    "testflight_check_build_status",
+    "testflight_get_review_status",
 
     # Files
     "file_read",
@@ -151,6 +157,21 @@ TIER_2_META_TOOLS = {
             "linear_add_comment",
             "linear_list_users", "linear_get_viewer",
             "linear_get_workflow_states", "linear_get_organization",
+        ]
+    },
+    "testflight_ops": {
+        "description": "TestFlight operations: builds, beta testers, beta groups, review submissions",
+        "actions": [
+            "get_build", "submit_for_review", "list_testers", "add_tester", "remove_tester",
+            "list_groups", "create_group", "delete_group", "add_build_to_group",
+            "add_testers_to_group", "remove_testers_from_group"
+        ],
+        "internal_tools": [
+            "testflight_get_build", "testflight_submit_for_review",
+            "testflight_list_testers", "testflight_add_tester", "testflight_remove_tester",
+            "testflight_list_groups", "testflight_create_group", "testflight_delete_group",
+            "testflight_add_build_to_group", "testflight_add_testers_to_group",
+            "testflight_remove_testers_from_group",
         ]
     },
     "browser_ops": {

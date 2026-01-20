@@ -151,8 +151,21 @@ class AppStoreConnectClient:
             Dict with status, count, and list of apps
         """
         try:
-            response = await self._request("GET", "apps", account=account)
-            data = await response.json()
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/apps",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
             apps = data.get("data", [])
 
             return {
@@ -591,6 +604,922 @@ class AppStoreConnectClient:
                 "app_id": app_id,
                 "version_id": version_id,
                 "updated_count": updated_count,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    # ============================================================================
+    # TestFlight - Builds
+    # ============================================================================
+
+    async def list_builds(
+        self,
+        app_id: Optional[str] = None,
+        version: Optional[str] = None,
+        processing_state: Optional[str] = None,
+        beta_review_state: Optional[str] = None,
+        limit: int = 10,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """List TestFlight builds.
+
+        Args:
+            app_id: Filter by app ID
+            version: Filter by version string
+            processing_state: Filter by processing state (PROCESSING, FAILED, INVALID, VALID)
+            beta_review_state: Filter by beta review state
+            limit: Maximum number of builds to return
+            account: Account name
+
+        Returns:
+            Dict with builds list
+        """
+        try:
+            params = {
+                "sort": "-uploadedDate",
+                "limit": str(limit),
+                "include": "preReleaseVersion,betaAppReviewSubmission"
+            }
+
+            if app_id:
+                params["filter[app]"] = app_id
+            if version:
+                params["filter[version]"] = version
+            if processing_state:
+                params["filter[processingState]"] = processing_state
+
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/builds",
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            builds = data.get("data", [])
+            included = data.get("included", [])
+
+            # Create lookup for included objects
+            included_lookup = {}
+            for item in included:
+                key = f"{item['type']}:{item['id']}"
+                included_lookup[key] = item
+
+            formatted_builds = []
+            for build in builds:
+                attrs = build.get("attributes", {})
+                relationships = build.get("relationships", {})
+
+                # Get pre-release version
+                pre_release_rel = relationships.get("preReleaseVersion", {}).get("data")
+                pre_release_version = None
+                if pre_release_rel:
+                    key = f"{pre_release_rel['type']}:{pre_release_rel['id']}"
+                    pre_release_obj = included_lookup.get(key, {})
+                    pre_release_version = pre_release_obj.get("attributes", {}).get("version")
+
+                # Get beta review status
+                review_rel = relationships.get("betaAppReviewSubmission", {}).get("data")
+                review_state = None
+                if review_rel:
+                    key = f"{review_rel['type']}:{review_rel['id']}"
+                    review_obj = included_lookup.get(key, {})
+                    review_state = review_obj.get("attributes", {}).get("betaReviewState")
+
+                formatted_builds.append({
+                    "id": build["id"],
+                    "version": pre_release_version,
+                    "build_number": attrs.get("version"),
+                    "uploaded_date": attrs.get("uploadedDate"),
+                    "processing_state": attrs.get("processingState"),
+                    "beta_review_state": review_state,
+                    "min_os_version": attrs.get("minOsVersion"),
+                    "uses_non_exempt_encryption": attrs.get("usesNonExemptEncryption")
+                })
+
+            return {
+                "type": "testflight_builds",
+                "account": account,
+                "count": len(formatted_builds),
+                "builds": formatted_builds,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def get_build(
+        self,
+        build_id: str,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Get details for a specific build.
+
+        Args:
+            build_id: Build ID
+            account: Account name
+
+        Returns:
+            Dict with build details
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            params = {"include": "preReleaseVersion,betaAppReviewSubmission,app"}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/builds/{build_id}",
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            build = data.get("data", {})
+            included = data.get("included", [])
+            attrs = build.get("attributes", {})
+            relationships = build.get("relationships", {})
+
+            # Create lookup
+            included_lookup = {}
+            for item in included:
+                key = f"{item['type']}:{item['id']}"
+                included_lookup[key] = item
+
+            # Get app info
+            app_rel = relationships.get("app", {}).get("data")
+            app_name = None
+            if app_rel:
+                key = f"{app_rel['type']}:{app_rel['id']}"
+                app_obj = included_lookup.get(key, {})
+                app_name = app_obj.get("attributes", {}).get("name")
+
+            # Get version
+            pre_release_rel = relationships.get("preReleaseVersion", {}).get("data")
+            version = None
+            if pre_release_rel:
+                key = f"{pre_release_rel['type']}:{pre_release_rel['id']}"
+                pre_release_obj = included_lookup.get(key, {})
+                version = pre_release_obj.get("attributes", {}).get("version")
+
+            # Get review status
+            review_rel = relationships.get("betaAppReviewSubmission", {}).get("data")
+            review_state = None
+            submitted_date = None
+            if review_rel:
+                key = f"{review_rel['type']}:{review_rel['id']}"
+                review_obj = included_lookup.get(key, {})
+                review_state = review_obj.get("attributes", {}).get("betaReviewState")
+                submitted_date = review_obj.get("attributes", {}).get("submittedDate")
+
+            return {
+                "type": "testflight_build",
+                "account": account,
+                "build": {
+                    "id": build["id"],
+                    "app_name": app_name,
+                    "version": version,
+                    "build_number": attrs.get("version"),
+                    "uploaded_date": attrs.get("uploadedDate"),
+                    "expiration_date": attrs.get("expirationDate"),
+                    "processing_state": attrs.get("processingState"),
+                    "beta_review_state": review_state,
+                    "beta_review_submitted": submitted_date,
+                    "min_os_version": attrs.get("minOsVersion"),
+                    "icon_asset_token": attrs.get("iconAssetToken"),
+                    "uses_non_exempt_encryption": attrs.get("usesNonExemptEncryption")
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    # ============================================================================
+    # TestFlight - Beta Review
+    # ============================================================================
+
+    async def submit_for_beta_review(
+        self,
+        build_id: str,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Submit a build for TestFlight beta review.
+
+        Args:
+            build_id: Build ID to submit
+            account: Account name
+
+        Returns:
+            Dict with submission result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "data": {
+                    "type": "betaAppReviewSubmissions",
+                    "relationships": {
+                        "build": {
+                            "data": {
+                                "type": "builds",
+                                "id": build_id
+                            }
+                        }
+                    }
+                }
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/betaAppReviewSubmissions",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            submission = data.get("data", {})
+            attrs = submission.get("attributes", {})
+
+            return {
+                "type": "testflight_submission",
+                "account": account,
+                "submission_id": submission.get("id"),
+                "build_id": build_id,
+                "beta_review_state": attrs.get("betaReviewState"),
+                "submitted_date": attrs.get("submittedDate"),
+                "status": "success"
+            }
+        except aiohttp.ClientResponseError as e:
+            error_msg = str(e)
+            if e.status == 409:
+                error_msg = "Build already submitted for review or has an existing submission"
+            return {
+                "type": "appstore_error",
+                "error": error_msg,
+                "status": "failed"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def get_beta_review_status(
+        self,
+        build_id: str,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Get beta review status for a build.
+
+        Args:
+            build_id: Build ID
+            account: Account name
+
+        Returns:
+            Dict with review status
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/builds/{build_id}/betaAppReviewSubmission",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    if response.status == 404:
+                        return {
+                            "type": "testflight_review_status",
+                            "account": account,
+                            "build_id": build_id,
+                            "submitted": False,
+                            "beta_review_state": None,
+                            "status": "success"
+                        }
+                    response.raise_for_status()
+                    data = await response.json()
+
+            submission = data.get("data", {})
+            attrs = submission.get("attributes", {})
+
+            return {
+                "type": "testflight_review_status",
+                "account": account,
+                "build_id": build_id,
+                "submission_id": submission.get("id"),
+                "submitted": True,
+                "beta_review_state": attrs.get("betaReviewState"),
+                "submitted_date": attrs.get("submittedDate"),
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    # ============================================================================
+    # TestFlight - Beta Testers
+    # ============================================================================
+
+    async def list_beta_testers(
+        self,
+        app_id: Optional[str] = None,
+        email: Optional[str] = None,
+        beta_group_id: Optional[str] = None,
+        limit: int = 50,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """List beta testers.
+
+        Args:
+            app_id: Filter by app ID
+            email: Filter by email address
+            beta_group_id: Filter by beta group ID
+            limit: Maximum number of testers to return
+            account: Account name
+
+        Returns:
+            Dict with testers list
+        """
+        try:
+            params = {
+                "limit": str(limit),
+                "sort": "email"
+            }
+
+            if email:
+                params["filter[email]"] = email
+            if app_id:
+                params["filter[apps]"] = app_id
+            if beta_group_id:
+                params["filter[betaGroups]"] = beta_group_id
+
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/betaTesters",
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            testers = data.get("data", [])
+
+            formatted_testers = []
+            for tester in testers:
+                attrs = tester.get("attributes", {})
+                formatted_testers.append({
+                    "id": tester["id"],
+                    "email": attrs.get("email"),
+                    "first_name": attrs.get("firstName"),
+                    "last_name": attrs.get("lastName"),
+                    "invite_type": attrs.get("inviteType"),
+                    "state": attrs.get("state")
+                })
+
+            return {
+                "type": "testflight_testers",
+                "account": account,
+                "count": len(formatted_testers),
+                "testers": formatted_testers,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def add_beta_tester(
+        self,
+        email: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        beta_group_ids: Optional[List[str]] = None,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Add a new beta tester.
+
+        Args:
+            email: Tester's email address
+            first_name: Tester's first name
+            last_name: Tester's last name
+            beta_group_ids: List of beta group IDs to add tester to
+            account: Account name
+
+        Returns:
+            Dict with created tester info
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            attributes = {"email": email}
+            if first_name:
+                attributes["firstName"] = first_name
+            if last_name:
+                attributes["lastName"] = last_name
+
+            payload = {
+                "data": {
+                    "type": "betaTesters",
+                    "attributes": attributes
+                }
+            }
+
+            if beta_group_ids:
+                payload["data"]["relationships"] = {
+                    "betaGroups": {
+                        "data": [{"type": "betaGroups", "id": gid} for gid in beta_group_ids]
+                    }
+                }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/betaTesters",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            tester = data.get("data", {})
+            attrs = tester.get("attributes", {})
+
+            return {
+                "type": "testflight_tester_created",
+                "account": account,
+                "tester": {
+                    "id": tester.get("id"),
+                    "email": attrs.get("email"),
+                    "first_name": attrs.get("firstName"),
+                    "last_name": attrs.get("lastName"),
+                    "invite_type": attrs.get("inviteType"),
+                    "state": attrs.get("state")
+                },
+                "status": "success"
+            }
+        except aiohttp.ClientResponseError as e:
+            error_msg = str(e)
+            if e.status == 409:
+                error_msg = "Beta tester with this email already exists"
+            return {
+                "type": "appstore_error",
+                "error": error_msg,
+                "status": "failed"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def remove_beta_tester(
+        self,
+        tester_id: str,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Remove a beta tester.
+
+        Args:
+            tester_id: Beta tester ID to remove
+            account: Account name
+
+        Returns:
+            Dict with deletion result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.base_url}/betaTesters/{tester_id}",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+
+            return {
+                "type": "testflight_tester_removed",
+                "account": account,
+                "tester_id": tester_id,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    # ============================================================================
+    # TestFlight - Beta Groups
+    # ============================================================================
+
+    async def list_beta_groups(
+        self,
+        app_id: Optional[str] = None,
+        name: Optional[str] = None,
+        is_internal: Optional[bool] = None,
+        limit: int = 50,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """List beta groups.
+
+        Args:
+            app_id: Filter by app ID
+            name: Filter by group name
+            is_internal: Filter by internal/external status
+            limit: Maximum number of groups to return
+            account: Account name
+
+        Returns:
+            Dict with beta groups list
+        """
+        try:
+            params = {
+                "limit": str(limit),
+                "sort": "name"
+            }
+
+            if app_id:
+                params["filter[app]"] = app_id
+            if name:
+                params["filter[name]"] = name
+            if is_internal is not None:
+                params["filter[isInternalGroup]"] = str(is_internal).lower()
+
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{self.base_url}/betaGroups",
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            groups = data.get("data", [])
+
+            formatted_groups = []
+            for group in groups:
+                attrs = group.get("attributes", {})
+                formatted_groups.append({
+                    "id": group["id"],
+                    "name": attrs.get("name"),
+                    "is_internal": attrs.get("isInternalGroup"),
+                    "public_link_enabled": attrs.get("publicLinkEnabled"),
+                    "public_link": attrs.get("publicLink"),
+                    "public_link_limit": attrs.get("publicLinkLimit"),
+                    "public_link_limit_enabled": attrs.get("publicLinkLimitEnabled"),
+                    "created_date": attrs.get("createdDate")
+                })
+
+            return {
+                "type": "testflight_groups",
+                "account": account,
+                "count": len(formatted_groups),
+                "groups": formatted_groups,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def create_beta_group(
+        self,
+        app_id: str,
+        name: str,
+        is_internal: bool = False,
+        public_link_enabled: bool = False,
+        public_link_limit: Optional[int] = None,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Create a new beta group.
+
+        Args:
+            app_id: App ID to create group for
+            name: Group name
+            is_internal: Whether this is an internal group
+            public_link_enabled: Whether to enable public link
+            public_link_limit: Maximum testers via public link
+            account: Account name
+
+        Returns:
+            Dict with created group info
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            attributes = {
+                "name": name,
+                "isInternalGroup": is_internal,
+                "publicLinkEnabled": public_link_enabled
+            }
+
+            if public_link_limit is not None:
+                attributes["publicLinkLimit"] = public_link_limit
+                attributes["publicLinkLimitEnabled"] = True
+
+            payload = {
+                "data": {
+                    "type": "betaGroups",
+                    "attributes": attributes,
+                    "relationships": {
+                        "app": {
+                            "data": {
+                                "type": "apps",
+                                "id": app_id
+                            }
+                        }
+                    }
+                }
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/betaGroups",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+                    data = await response.json()
+
+            group = data.get("data", {})
+            attrs = group.get("attributes", {})
+
+            return {
+                "type": "testflight_group_created",
+                "account": account,
+                "group": {
+                    "id": group.get("id"),
+                    "name": attrs.get("name"),
+                    "is_internal": attrs.get("isInternalGroup"),
+                    "public_link_enabled": attrs.get("publicLinkEnabled"),
+                    "public_link": attrs.get("publicLink")
+                },
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def delete_beta_group(
+        self,
+        group_id: str,
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Delete a beta group.
+
+        Args:
+            group_id: Beta group ID to delete
+            account: Account name
+
+        Returns:
+            Dict with deletion result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.base_url}/betaGroups/{group_id}",
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+
+            return {
+                "type": "testflight_group_deleted",
+                "account": account,
+                "group_id": group_id,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def add_build_to_group(
+        self,
+        group_id: str,
+        build_ids: List[str],
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Add builds to a beta group.
+
+        Args:
+            group_id: Beta group ID
+            build_ids: List of build IDs to add
+            account: Account name
+
+        Returns:
+            Dict with result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "data": [{"type": "builds", "id": bid} for bid in build_ids]
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/betaGroups/{group_id}/relationships/builds",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+
+            return {
+                "type": "testflight_builds_added",
+                "account": account,
+                "group_id": group_id,
+                "build_ids": build_ids,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def add_testers_to_group(
+        self,
+        group_id: str,
+        tester_ids: List[str],
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Add testers to a beta group.
+
+        Args:
+            group_id: Beta group ID
+            tester_ids: List of tester IDs to add
+            account: Account name
+
+        Returns:
+            Dict with result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "data": [{"type": "betaTesters", "id": tid} for tid in tester_ids]
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/betaGroups/{group_id}/relationships/betaTesters",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+
+            return {
+                "type": "testflight_testers_added",
+                "account": account,
+                "group_id": group_id,
+                "tester_ids": tester_ids,
+                "status": "success"
+            }
+        except Exception as e:
+            return {
+                "type": "appstore_error",
+                "error": str(e),
+                "status": "failed"
+            }
+
+    async def remove_testers_from_group(
+        self,
+        group_id: str,
+        tester_ids: List[str],
+        account: str = "primary"
+    ) -> Dict[str, Any]:
+        """Remove testers from a beta group.
+
+        Args:
+            group_id: Beta group ID
+            tester_ids: List of tester IDs to remove
+            account: Account name
+
+        Returns:
+            Dict with result
+        """
+        try:
+            token = self._generate_jwt(account)
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "data": [{"type": "betaTesters", "id": tid} for tid in tester_ids]
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"{self.base_url}/betaGroups/{group_id}/relationships/betaTesters",
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=90)
+                ) as response:
+                    response.raise_for_status()
+
+            return {
+                "type": "testflight_testers_removed",
+                "account": account,
+                "group_id": group_id,
+                "tester_ids": tester_ids,
                 "status": "success"
             }
         except Exception as e:
